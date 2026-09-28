@@ -352,3 +352,35 @@ Also worth knowing: `scripts/run_failure_scenarios.py`'s first scenario delibera
 ## Production boundary
 
 This assessment cut is local and synthetic by design. SQLite, local Chroma, local Phoenix, local HMAC development identity and in-process outbox delivery sit behind interfaces and have documented production replacements. Cloud/container deployment and live bank-network integrations are intentionally out of scope.
+
+## Review fix pass (post-submission)
+
+An external architecture review of this repository found a small number of concrete, evidence-backed defects. Each was fixed and re-verified rather than just documented; this section is that record.
+
+1. **`reports/golden_signals.json`'s latency block was all zeros.** `scripts/build_golden_signals.py` was reading `span.get("run_id")` / `span.get("latency_ms")` from `traces/phoenix_spans.jsonl`, but the real Phoenix/OpenInference export schema nests those under `attributes.run_id` and carries no `latency_ms` field at all (only `start_time`/`end_time`). Fixed: the script now reads the actual exported schema, computes latency from `end_time - start_time`, and derives `kind` from `attributes.openinference.span.kind` as well as span name. It also now hard-fails (instead of silently committing zeros) if a future export schema drift produces zero resolved runs or zero latency samples. Re-run and verified: `runs: 20`, non-zero p50/p95/p99 for every span kind (thinking/acting/tool/end_to_end).
+2. **LangMem was a health-check flag, never an operating memory path.** `LangMemBridge` now actually binds `create_manage_memory_tool`/`create_search_memory_tool` to an `InMemoryStore` and is called from the graph: `CopilotGraph.ingress` layers a best-effort `semantic_recall()` on top of `TieredMemory.recall()` (tagged `trust_level=model_inferred`, never decision-critical), and `CopilotGraph.finalize` mirrors every `TieredMemory.write()` into LangMem via `remember()`. `TieredMemory` remains the sole source of truth for decision-critical facts; LangMem degrades to a no-op (never raises) if the dependency or its API is unavailable.
+3. **The checkpointer's `ImportError` fallback was silent.** A missing `langgraph-checkpoint-sqlite` install used to make `Services.run()` quietly continue with `checkpointer=None`, silently disabling the cross-session recall and human-review resume guarantees. It now logs an error, writes a `checkpointer_unavailable` audit record, and surfaces a `CHECKPOINTER_UNAVAILABLE` warning on the response's `analyst_view`.
+4. **`tests/test_loops.py`'s recursion-limit test only grepped source text.** Added two dynamic tests that actually build a graph with an intentional infinite cycle, invoke it with a real `recursion_limit` (one arbitrary, one the project's own configured `Settings.max_graph_steps` default), and assert `GraphRecursionError` is genuinely raised. All 5 tests in the file pass.
+5. **One of three `docs/failure-analysis.md` citations didn't resolve.** Failure 1 (`FAIL-FALLBACK-001`) cited a bare run ID with no log/trace reference. `scripts/run_failure_scenarios.py` now looks up every `logs/model_provider.jsonl` record carrying that run_id (the real per-provider-attempt log `SemanticGateway._write_attempt_log` already writes) and cites the specific, line-addressable records — the same standard Failures 2 and 3 already met.
+6. **`docs/risk-register.md` cited `CTRL-GUARD-001`/`CTRL-PII-001` with nothing backing them.** Added `docs/controls.md`, a small control catalog resolving each ID to its implementing file/function and covering test.
+7. **`tests/test_routing.py` covered 2 of ~8 supervisor branches.** Expanded to 15 tests covering every branch in `CopilotGraph.supervisor` (injection short-circuit, ambiguous/out-of-scope, policy_query with/without hits, each missing-field routing step, human-review with/without resume, and the fully-resolved path).
+
+Full suite after this pass: `69 passed` (`GOOGLE_API_KEY=x GROQ_API_KEY=x SEMANTIC_MODE=fake pytest tests/ -q`, offline, no live credentials).
+
+## Streamlit UI (`streamlit_app.py`)
+
+An alternative, Python-only front end alongside the existing `frontend/index.html` + FastAPI workspace above -- same `runtime/copilot.db` and `runtime/checkpoints.db`, so a case opened in one is visible in the other. It calls nothing new: every action goes through `app.workflow.Copilot`, the same class `app/cli.py` uses.
+
+```bash
+pip install -r requirements.txt   # now includes streamlit + pandas
+uv run python scripts/seed_data.py   # if you haven't already
+streamlit run streamlit_app.py
+```
+
+Open the URL Streamlit prints (typically `http://localhost:8501`). Three tabs:
+
+- **Submit Dispute** -- open a case for one of the seeded synthetic customers (`C-1001`/`C-1002`/`C-1003`), type a dispute message, and run it through the real graph (classification -> fraud scoring -> chargeback-rules retrieval -> decision). Shows the case state, recommended action, customer-facing message, and the full analyst view (classification/fraud/policy/escalation reasons).
+- **Evidence & Observability** -- renders the committed `reports/golden_signals.json`, `reports/dashboard.png`/`dashboard_data.csv`, `reports/eval_report.json`, `docs/failure-analysis.md`, and the governance pack (`docs/risk-register.md`, `docs/controls.md`, `docs/model-card.md`, `docs/compliance.md`, `docs/output-risk.md`) directly from disk -- nothing is recomputed, it's the same files the hackathon review is scored from.
+- **Human Review Queue** -- lists pending/claimed `review_tasks`, lets a reviewer (`reviewer:R-001`) claim and resolve one (provisional_credit/chargeback/investigate/deny), then resumes the graph from its LangGraph checkpoint via `Copilot.resume_review()` -- the same `interrupt()`/`Command(resume=...)` flow `app/cli.py review` uses.
+
+Needs the same `.env` as everything else in this README (`GOOGLE_API_KEY`, `GROQ_API_KEY`, `ACCESS_SECRET`, etc.); for an offline smoke test without live credentials, set `SEMANTIC_MODE=fake` first.

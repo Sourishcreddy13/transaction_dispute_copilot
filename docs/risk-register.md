@@ -1,9 +1,12 @@
 # Risk Register
 
+Every `CTRL-*` mitigation cited below resolves to an implementing file/function
+and a test in `docs/controls.md`, per the Citation-Resolves Rule.
+
 | ID | Risk | Category | Likelihood | Impact | Mitigation | Residual | Owner |
 |---|---|---|---|---|---|---|---|
-| RISK-001 | Prompt injection in claimant text | OWASP LLM01 | High | High | `CTRL-GUARD-001`, trust-zone isolation, no tools for LLM | Medium | AI Engineering |
-| RISK-002 | Sensitive data disclosure | OWASP LLM02 | Medium | High | `CTRL-PII-001`, sink allow-lists, customer-safe renderer | Low | Security |
+| RISK-001 | Prompt injection in claimant text | OWASP LLM01 | High | High | [`CTRL-GUARD-001`](controls.md), trust-zone isolation, no tools for LLM | Medium | AI Engineering |
+| RISK-002 | Sensitive data disclosure | OWASP LLM02 | Medium | High | [`CTRL-PII-001`](controls.md), sink allow-lists, customer-safe renderer | Low | Security |
 | RISK-003 | Unauthorized customer access | OWASP / IAM | Medium | Critical | signed `AccessContext`, case ownership checks | Low | Platform |
 | RISK-004 | RAG corpus poisoning | OWASP LLM08/LLM03 | Medium | High | manifest hash, corpus lint, instruction/data separation | Low | AI Engineering |
 | RISK-005 | Provider failure | Reliability | Medium | High | bounded retry, breaker, Gemini→Groq fallback | Low | Platform |

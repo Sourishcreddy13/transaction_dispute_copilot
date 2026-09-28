@@ -3,10 +3,52 @@ from __future__ import annotations
 import csv
 import json
 import math
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import yaml
+
+
+def _parse_iso(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        # Phoenix/OTel exports RFC3339 with a trailing "Z"; datetime.fromisoformat
+        # (py<3.11) doesn't accept "Z" directly.
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _span_latency_ms(span: dict) -> float:
+    """Real Phoenix/OpenInference export schema carries start_time/end_time
+    (ISO-8601 strings), NOT a top-level latency_ms field. Compute it here so the
+    golden-signals report reflects actual measured span duration instead of a
+    key that was never populated by the exporter (see docs/deviations.md D-03)."""
+    start = _parse_iso(span.get("start_time"))
+    end = _parse_iso(span.get("end_time"))
+    if start is None or end is None:
+        return 0.0
+    return max(0.0, (end - start).total_seconds() * 1000.0)
+
+
+def _span_run_id(span: dict) -> str | None:
+    """Real export nests custom attributes under dotted keys, e.g.
+    "attributes.run_id", not a top-level "run_id"."""
+    return span.get("attributes.run_id") or span.get("run_id") or (span.get("attributes") or {}).get("run_id")
+
+
+def _span_usage(span: dict) -> dict:
+    """Token usage lives under attributes.llm.token_count.* in the real export,
+    not under a top-level "usage" object."""
+    if span.get("usage"):
+        return span["usage"]
+    return {
+        "input_tokens": span.get("attributes.llm.token_count.prompt", 0) or 0,
+        "output_tokens": span.get("attributes.llm.token_count.completion", 0) or 0,
+        "total_tokens": span.get("attributes.llm.token_count.total", 0) or 0,
+    }
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "reports"
@@ -26,15 +68,17 @@ def load_jsonl(path: Path) -> list[dict]:
 
 
 
-def _span_kind(name: str | None) -> str:
+def _span_kind(span: dict) -> str:
+    name = span.get("name")
+    oi_kind = (span.get("attributes.openinference.span.kind") or span.get("span_kind") or "").upper()
     text = (name or "").lower()
-    if text.startswith("tool."):
+    if text.startswith("tool.") or oi_kind == "TOOL":
         return "tool"
     if text.startswith("copilot.run"):
         return "end_to_end"
     if text.startswith("agent.") or text.startswith("copilot.review"):
         return "acting"
-    if any(x in text for x in ("llm", "chat", "generate", "gemini", "groq")):
+    if oi_kind == "LLM" or any(x in text for x in ("llm", "chat", "generate", "gemini", "groq")):
         return "thinking"
     return "acting"
 
@@ -78,23 +122,23 @@ for row in providers:
 # Turn Phoenix/provider records into one evidence table.
 rows: list[dict] = []
 for span in spans:
-    run_id = span.get("run_id")
+    run_id = _span_run_id(span)
     provider = provider_by_run.get(run_id, {})
-    usage = span.get("usage") or {}
+    usage = _span_usage(span)
     rows.append(
         {
             "name": span.get("name"),
-            "kind": span.get("kind") or _span_kind(span.get("name")),
+            "kind": _span_kind(span),
             "run_id": run_id,
-            "case_id": span.get("case_id"),
-            "trace_id": span.get("trace_id"),
-            "span_id": span.get("span_id"),
-            "latency_ms": span.get("latency_ms", 0),
-            "provider": provider.get("provider") or span.get("llm.provider"),
+            "case_id": span.get("attributes.case_id") or span.get("case_id"),
+            "trace_id": span.get("context.trace_id") or span.get("trace_id"),
+            "span_id": span.get("context.span_id") or span.get("span_id"),
+            "latency_ms": _span_latency_ms(span),
+            "provider": provider.get("provider") or span.get("attributes.llm.provider") or span.get("llm.provider"),
             "provider_status": provider.get("status"),
-            "input_tokens": usage.get("input_tokens", span.get("llm.input_tokens", 0)) or 0,
-            "output_tokens": usage.get("output_tokens", span.get("llm.output_tokens", 0)) or 0,
-            "total_tokens": usage.get("total_tokens", span.get("llm.total_tokens", 0)) or 0,
+            "input_tokens": int(usage.get("input_tokens", 0) or 0),
+            "output_tokens": int(usage.get("output_tokens", 0) or 0),
+            "total_tokens": int(usage.get("total_tokens", 0) or 0),
             "estimated_cost_usd": span.get("estimated_cost_usd", 0) or 0,
         }
     )
@@ -128,7 +172,7 @@ output_price = float(pricing.get("output_usd_per_1k_tokens", 0.0))
 estimated_cost = input_tokens / 1000 * input_price + output_tokens / 1000 * output_price
 
 fallbacks = sum(1 for x in providers if x.get("status") == "SUCCESS" and int(x.get("attempt", 1)) > 1)
-run_count = len({x.get("run_id") for x in spans if x.get("run_id")})
+run_count = len({r.get("run_id") for r in rows if r.get("run_id")})
 
 deterministic = eval_report.get("deterministic_evaluation", {})
 quality_scores: dict[str, float | None] = {}
@@ -176,6 +220,23 @@ report = {
         "hallucination_rate": _error_rate_from_aligned_score(qualitative_cases, "Hallucination"),
     },
 }
+
+
+# Sanity check: this report exists specifically to prove Phoenix-derived latency
+# is being measured (AC-09). If the span schema drifts again in a future export
+# and every latency bucket comes back empty, fail loudly here instead of quietly
+# committing a report full of zeros.
+if spans and report["runs"] == 0:
+    raise RuntimeError(
+        "golden_signals: found %d Phoenix spans but resolved 0 distinct run_ids -- "
+        "check that traces/phoenix_spans.jsonl's schema still matches "
+        "_span_run_id()/_span_latency_ms() in this script." % len(spans)
+    )
+if spans and all(v is None for v in report["latency_ms"]["overall"].values()):
+    raise RuntimeError(
+        "golden_signals: found %d Phoenix spans but computed no latency samples -- "
+        "check start_time/end_time parsing in _span_latency_ms()." % len(spans)
+    )
 
 (REPORTS / "golden_signals.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 print(REPORTS / "golden_signals.json")

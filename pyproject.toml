@@ -57,6 +57,9 @@ dependencies = [
     "sentence-transformers>=6.1,<7",
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.35,<1",
+    # streamlit_app.py: interactive dispute-intake / evidence-dashboard / human-review UI
+    "pandas>=2.2,<3",
+    "streamlit>=1.40,<2",
 ]
 
 [project.optional-dependencies]

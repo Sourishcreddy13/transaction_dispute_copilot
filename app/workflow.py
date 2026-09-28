@@ -3,11 +3,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import time
 from pathlib import Path
 from decimal import Decimal
+
+logger = logging.getLogger("dispute_copilot")
 
 from app.core.db import DB
 from app.core.data_plane import DataPlane
@@ -241,10 +244,32 @@ class Copilot:
                         for key, value in usage.items():
                             span.set_attribute(f"llm.{key}", int(value) if isinstance(value, int) else str(value))
                         span.set_attribute("llm.provider", self.s.semantic.last_provider)
-        except ImportError:
+        except ImportError as exc:
+            # langgraph-checkpoint-sqlite is a required dependency (pinned in
+            # pyproject.toml) precisely because AC-05 (cross-session context
+            # recall) and the human_review interrupt()/resume() flow depend on a
+            # real checkpointer. Running without one is a correctness regression,
+            # not a convenience fallback -- so this is surfaced loudly (log +
+            # audit record) instead of silently degrading, and the response
+            # carries a warning the caller/operator can act on.
+            logger.error(
+                "AsyncSqliteSaver unavailable (%s) -- running case %s WITHOUT a checkpointer; "
+                "cross-session memory recall and human-review resume will not persist across "
+                "process restarts for this run.",
+                exc,
+                case_id,
+            )
+            self.db.audit(
+                case_id,
+                "checkpointer_unavailable",
+                {"run_id": run_id, "actor_id": actor, "error": str(exc)},
+            )
             graph = CopilotGraph(self.s, None)
             with self.s.telemetry.span("copilot.run", case_id=case_id, run_id=run_id):
                 result = await graph.ainvoke(initial, case_id)
+            result = dict(result)
+            result.setdefault("warnings", [])
+            result["warnings"] = list(result["warnings"]) + ["CHECKPOINTER_UNAVAILABLE"]
         except Exception as exc:
             self.db.audit(case_id, "workflow_failure", {"run_id": run_id, "actor_id": actor, "error": str(exc)})
             try:
@@ -303,6 +328,7 @@ class Copilot:
                 "escalation_reasons": rec.escalation_reasons if rec else [],
                 "transaction": result.get("transaction"),
                 "history": result.get("history", []),
+                "warnings": result.get("warnings", []),
                 "profile": result.get("profile"),
                 "prior_disputes": result.get("prior", []),
                 "account_snapshot": result.get("account_snapshot"),

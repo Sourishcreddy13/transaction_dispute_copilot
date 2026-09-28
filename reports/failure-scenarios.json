@@ -1,6 +1,6 @@
 [
   {
-    "scenario": "gemini_primary_failure_fallback",
+    "scenario": "semantic_provider_exhaustion",
     "status": "handled",
     "run_id": "FAIL-FALLBACK-001",
     "provider_attempts": [
@@ -18,21 +18,89 @@
       {
         "provider": "groq",
         "model": "openai/gpt-oss-120b",
-        "status": "SUCCESS",
-        "latency_ms": 1483.32,
+        "status": "FAILED",
+        "error": "GROQ_API_KEY_NOT_SET",
+        "latency_ms": 291.89,
         "attempt": 2,
         "provider_attempt": 1,
         "operation": "classify",
-        "run_id": "FAIL-FALLBACK-001",
-        "usage": {
-          "input_tokens": 435,
-          "output_tokens": 181,
-          "total_tokens": 616
-        }
+        "run_id": "FAIL-FALLBACK-001"
       }
     ],
-    "root_cause": "Gemini was deliberately fault-injected for resilience verification.",
-    "fix": "Classified provider failure activates the fallback provider and records provenance."
+    "provider_log_ref": [
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 17,
+        "provider": "gemini",
+        "status": "FAILED",
+        "latency_ms": 0.0
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 18,
+        "provider": "groq",
+        "status": "SUCCESS",
+        "latency_ms": 1316.17
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 28,
+        "provider": "gemini",
+        "status": "FAILED",
+        "latency_ms": 0.01
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 29,
+        "provider": "groq",
+        "status": "SUCCESS",
+        "latency_ms": 1551.66
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 54,
+        "provider": "gemini",
+        "status": "FAILED",
+        "latency_ms": 0.0
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 55,
+        "provider": "groq",
+        "status": "SUCCESS",
+        "latency_ms": 1483.32
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 56,
+        "provider": "gemini",
+        "status": "FAILED",
+        "latency_ms": 0.01
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 57,
+        "provider": "groq",
+        "status": "FAILED",
+        "latency_ms": 486.31
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 65,
+        "provider": "gemini",
+        "status": "FAILED",
+        "latency_ms": 0.0
+      },
+      {
+        "artifact": "logs/model_provider.jsonl",
+        "line": 66,
+        "provider": "groq",
+        "status": "FAILED",
+        "latency_ms": 291.89
+      }
+    ],
+    "root_cause": "Both semantic attempts failed or were fault-injected.",
+    "fix": "The workflow converts semantic exhaustion into NEEDS_INFO/human review rather than releasing a decision."
   },
   {
     "scenario": "cross_customer_transaction_access",
@@ -40,9 +108,9 @@
     "error": "TXN_NOT_FOUND",
     "tool_log_ref": {
       "artifact": "logs/tool_calls.jsonl",
-      "line": 285,
+      "line": 311,
       "tool_name": "get_transaction",
-      "timestamp": 1790575598.026457,
+      "timestamp": 1790578450.681571,
       "status": "ERROR"
     },
     "root_cause": "Requested transaction belongs to another synthetic customer.",
@@ -54,9 +122,9 @@
     "error": "TXN_NOT_FOUND",
     "tool_log_ref": {
       "artifact": "logs/tool_calls.jsonl",
-      "line": 286,
+      "line": 312,
       "tool_name": "get_transaction",
-      "timestamp": 1790575598.02859,
+      "timestamp": 1790578450.682529,
       "status": "ERROR"
     },
     "root_cause": "The requested synthetic transaction does not exist.",

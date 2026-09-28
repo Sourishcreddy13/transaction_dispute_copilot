@@ -285,3 +285,25 @@
 {"timestamp": 1790575568.576965, "name": "agent.chargeback_rules", "latency_ms": 52.7, "trace_id": "6e2ac05f35138145ac9c3c23d4ed0ab1", "span_id": "e994e1c2e84081a9", "case_id": "CASE-7894590A7E", "run_id": "RUN-74cf568820fb"}
 {"timestamp": 1790575568.591237, "name": "agent.decision_engine", "latency_ms": 2.1, "trace_id": "6e2ac05f35138145ac9c3c23d4ed0ab1", "span_id": "a046609052e721df", "case_id": "CASE-7894590A7E", "run_id": "RUN-74cf568820fb"}
 {"timestamp": 1790575568.615238, "name": "copilot.run", "latency_ms": 5251.99, "trace_id": "6e2ac05f35138145ac9c3c23d4ed0ab1", "span_id": "492824ff55810076", "case_id": "CASE-7894590A7E", "run_id": "RUN-74cf568820fb"}
+{"timestamp": 1790578418.7242398, "name": "agent.case_authorize", "latency_ms": 0.21, "trace_id": null, "span_id": null, "case_id": "CASE-697F2BD51C", "run_id": "RUN-ebefc5a82509"}
+{"timestamp": 1790578418.726409, "name": "agent.ingress", "latency_ms": 1.55, "trace_id": null, "span_id": null, "case_id": "CASE-697F2BD51C", "run_id": "RUN-ebefc5a82509"}
+{"timestamp": 1790578418.7283561, "name": "agent.classification", "latency_ms": 0.9, "trace_id": null, "span_id": null, "case_id": "CASE-697F2BD51C", "run_id": "RUN-ebefc5a82509"}
+{"timestamp": 1790578421.1703098, "name": "agent.fraud_scoring", "latency_ms": 0.55, "trace_id": null, "span_id": null, "case_id": "CASE-697F2BD51C", "run_id": "RUN-ebefc5a82509"}
+{"timestamp": 1790578421.495282, "name": "agent.chargeback_rules", "latency_ms": 323.9, "trace_id": null, "span_id": null, "case_id": "CASE-697F2BD51C", "run_id": "RUN-ebefc5a82509"}
+{"timestamp": 1790578421.498402, "name": "agent.decision_engine", "latency_ms": 1.52, "trace_id": null, "span_id": null, "case_id": "CASE-697F2BD51C", "run_id": "RUN-ebefc5a82509"}
+{"timestamp": 1790578421.504263, "name": "copilot.run", "latency_ms": 2783.55, "trace_id": null, "span_id": null, "case_id": "CASE-697F2BD51C", "run_id": "RUN-ebefc5a82509"}
+{"timestamp": 1790578421.549166, "name": "agent.case_authorize", "latency_ms": 0.58, "trace_id": null, "span_id": null, "case_id": "CASE-8E8AC04174", "run_id": "RUN-454ea4e903c7"}
+{"timestamp": 1790578421.553409, "name": "agent.ingress", "latency_ms": 3.28, "trace_id": null, "span_id": null, "case_id": "CASE-8E8AC04174", "run_id": "RUN-454ea4e903c7"}
+{"timestamp": 1790578421.554995, "name": "agent.classification", "latency_ms": 0.46, "trace_id": null, "span_id": null, "case_id": "CASE-8E8AC04174", "run_id": "RUN-454ea4e903c7"}
+{"timestamp": 1790578423.942004, "name": "agent.fraud_scoring", "latency_ms": 1.0, "trace_id": null, "span_id": null, "case_id": "CASE-8E8AC04174", "run_id": "RUN-454ea4e903c7"}
+{"timestamp": 1790578424.282806, "name": "agent.chargeback_rules", "latency_ms": 339.48, "trace_id": null, "span_id": null, "case_id": "CASE-8E8AC04174", "run_id": "RUN-454ea4e903c7"}
+{"timestamp": 1790578424.2868228, "name": "agent.decision_engine", "latency_ms": 2.35, "trace_id": null, "span_id": null, "case_id": "CASE-8E8AC04174", "run_id": "RUN-454ea4e903c7"}
+{"timestamp": 1790578424.290596, "name": "copilot.run", "latency_ms": 2743.63, "trace_id": null, "span_id": null, "case_id": "CASE-8E8AC04174", "run_id": "RUN-454ea4e903c7"}
+{"timestamp": 1790578424.318269, "name": "agent.case_authorize", "latency_ms": 0.58, "trace_id": null, "span_id": null, "case_id": "CASE-8C6804C032", "run_id": "RUN-47c0bfb52e5d"}
+{"timestamp": 1790578424.3206332, "name": "agent.ingress", "latency_ms": 1.83, "trace_id": null, "span_id": null, "case_id": "CASE-8C6804C032", "run_id": "RUN-47c0bfb52e5d"}
+{"timestamp": 1790578424.3223832, "name": "agent.classification", "latency_ms": 0.57, "trace_id": null, "span_id": null, "case_id": "CASE-8C6804C032", "run_id": "RUN-47c0bfb52e5d"}
+{"timestamp": 1790578426.847233, "name": "agent.fraud_scoring", "latency_ms": 0.51, "trace_id": null, "span_id": null, "case_id": "CASE-8C6804C032", "run_id": "RUN-47c0bfb52e5d"}
+{"timestamp": 1790578427.175471, "name": "agent.chargeback_rules", "latency_ms": 327.13, "trace_id": null, "span_id": null, "case_id": "CASE-8C6804C032", "run_id": "RUN-47c0bfb52e5d"}
+{"timestamp": 1790578427.179979, "name": "agent.decision_engine", "latency_ms": 2.37, "trace_id": null, "span_id": null, "case_id": "CASE-8C6804C032", "run_id": "RUN-47c0bfb52e5d"}
+{"timestamp": 1790578427.187236, "name": "copilot.run", "latency_ms": 2871.75, "trace_id": null, "span_id": null, "case_id": "CASE-8C6804C032", "run_id": "RUN-47c0bfb52e5d"}
+{"timestamp": 1790578427.52202, "name": "test_span", "latency_ms": 0.11, "trace_id": "17f993d8ed3e3d7fd1a7003938009e46", "span_id": "1717f749e53e9c9e", "foo": "bar"}

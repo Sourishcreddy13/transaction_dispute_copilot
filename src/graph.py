@@ -150,6 +150,15 @@ class CopilotGraph:
                     f"historical_data: {hit['fact_type']}={hit['fact_value']} (trust={hit['trust_level']})"
                     for hit in memory_hits[:5]
                 ]
+                # LangMem semantic layer: read-only, additive context over the same facts
+                # TieredMemory already vetted. Tagged trust_level=model_inferred by
+                # LangMemBridge itself, so nothing downstream can mistake this for a
+                # verified fact; it never feeds the decision-critical path.
+                semantic_hits = await self.s.langmem.semantic_recall(customer_id, env.masked_text)
+                historical_memory += [
+                    f"semantic_recall: {hit['fact_value']} (trust={hit['trust_level']})"
+                    for hit in semantic_hits
+                ]
                 return {
                     "masked_text": env.masked_text,
                     "quarantined": True,
@@ -471,6 +480,11 @@ class CopilotGraph:
             customer_id = current["customer_id"]
             self.s.memory.write(customer_id, "last_dispute_action", rec.primary_action.value, self.s.memory.system_verified_level, "deterministic_decision")
             self.s.memory.write(customer_id, "last_dispute_type", state["classification"].intent, self.s.memory.system_verified_level, "semantic_classification_plus_policy")
+            # Mirror the same TieredMemory-accepted facts into LangMem's semantic index.
+            # Best-effort only: TieredMemory.write() above is already the durable,
+            # decision-critical record; this just makes it semantically searchable too.
+            await self.s.langmem.remember(customer_id, "last_dispute_action", rec.primary_action.value)
+            await self.s.langmem.remember(customer_id, "last_dispute_type", state["classification"].intent)
 
         try:
             validate_release_invariants({
