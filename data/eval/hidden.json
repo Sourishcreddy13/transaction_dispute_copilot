@@ -1,0 +1,5 @@
+[
+  {"id":"H1","customer_id":"C-1001","transaction_id":"T-1007","text":"Please investigate a charge I don't recognize on my account.","expected_intent":"unauthorized","expected_action":"provisional_credit","expected_human_review":false},
+  {"id":"H2","customer_id":"C-1002","transaction_id":"T-2001","text":"Someone used my card and I was not the person who made the purchase.","expected_intent":"unauthorized","expected_action":"provisional_credit","expected_human_review":true},
+  {"id":"H3","customer_id":"C-1003","transaction_id":"T-3001","text":"The store duplicated the same purchase.","expected_intent":"merchant_dispute","expected_action":"chargeback","expected_human_review":false}
+]

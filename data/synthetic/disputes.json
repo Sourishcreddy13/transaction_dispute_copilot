@@ -1,0 +1,4 @@
+[
+ {"dispute_id":"D-1","customer_id":"C-1001","transaction_id":"T-old-1","dispute_type":"merchant_dispute","outcome":"accepted"},
+ {"dispute_id":"D-2","customer_id":"C-1003","transaction_id":"T-old-3","dispute_type":"unauthorized","outcome":"rejected"}
+]

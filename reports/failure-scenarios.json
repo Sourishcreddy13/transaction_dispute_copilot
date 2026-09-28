@@ -1,0 +1,65 @@
+[
+  {
+    "scenario": "gemini_primary_failure_fallback",
+    "status": "handled",
+    "run_id": "FAIL-FALLBACK-001",
+    "provider_attempts": [
+      {
+        "provider": "gemini",
+        "model": "gemini-3.1-flash-lite",
+        "status": "FAILED",
+        "error": "INJECTED_GEMINI_FAILURE",
+        "latency_ms": 0.0,
+        "attempt": 1,
+        "provider_attempt": 1,
+        "operation": "classify",
+        "run_id": "FAIL-FALLBACK-001"
+      },
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b",
+        "status": "SUCCESS",
+        "latency_ms": 1483.32,
+        "attempt": 2,
+        "provider_attempt": 1,
+        "operation": "classify",
+        "run_id": "FAIL-FALLBACK-001",
+        "usage": {
+          "input_tokens": 435,
+          "output_tokens": 181,
+          "total_tokens": 616
+        }
+      }
+    ],
+    "root_cause": "Gemini was deliberately fault-injected for resilience verification.",
+    "fix": "Classified provider failure activates the fallback provider and records provenance."
+  },
+  {
+    "scenario": "cross_customer_transaction_access",
+    "status": "handled",
+    "error": "TXN_NOT_FOUND",
+    "tool_log_ref": {
+      "artifact": "logs/tool_calls.jsonl",
+      "line": 285,
+      "tool_name": "get_transaction",
+      "timestamp": 1790575598.026457,
+      "status": "ERROR"
+    },
+    "root_cause": "Requested transaction belongs to another synthetic customer.",
+    "fix": "MCP data-plane checks signed case customer binding and returns TXN_NOT_FOUND semantics."
+  },
+  {
+    "scenario": "unknown_transaction",
+    "status": "handled",
+    "error": "TXN_NOT_FOUND",
+    "tool_log_ref": {
+      "artifact": "logs/tool_calls.jsonl",
+      "line": 286,
+      "tool_name": "get_transaction",
+      "timestamp": 1790575598.02859,
+      "status": "ERROR"
+    },
+    "root_cause": "The requested synthetic transaction does not exist.",
+    "fix": "Tool failure is typed and cannot become fabricated transaction data."
+  }
+]

@@ -1,0 +1,47 @@
+[
+  {
+    "account_id": "A-1001",
+    "customer_id": "C-1001",
+    "account_type": "savings",
+    "currency": "INR",
+    "current_balance": "148250.40",
+    "available_balance": "148250.40",
+    "ledger_balance": "148250.40",
+    "hold_amount": "0.00",
+    "status": "active",
+    "masked_account_number": "XXXXXX1001",
+    "branch_name": "Chennai Digital Branch",
+    "ifsc_masked": "ASTERIAXXX1",
+    "opened_on": "2022-06-14"
+  },
+  {
+    "account_id": "A-1002",
+    "customer_id": "C-1002",
+    "account_type": "savings",
+    "currency": "INR",
+    "current_balance": "524900.10",
+    "available_balance": "439900.10",
+    "ledger_balance": "524900.10",
+    "hold_amount": "85000.00",
+    "status": "active",
+    "masked_account_number": "XXXXXX2002",
+    "branch_name": "Bengaluru Digital Branch",
+    "ifsc_masked": "ASTERIAXXX2",
+    "opened_on": "2023-02-11"
+  },
+  {
+    "account_id": "A-1003",
+    "customer_id": "C-1003",
+    "account_type": "savings",
+    "currency": "INR",
+    "current_balance": "82450.75",
+    "available_balance": "82450.75",
+    "ledger_balance": "82450.75",
+    "hold_amount": "0.00",
+    "status": "active",
+    "masked_account_number": "XXXXXX3003",
+    "branch_name": "Hyderabad Digital Branch",
+    "ifsc_masked": "ASTERIAXXX3",
+    "opened_on": "2024-01-08"
+  }
+]

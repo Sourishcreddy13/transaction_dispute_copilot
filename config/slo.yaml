@@ -1,0 +1,9 @@
+end_to_end_p95_ms: 20000
+end_to_end_p99_ms: 40000
+provider_success_rate: 0.99
+fallback_rate_warning: 0.10
+fallback_rate_page: 0.25
+mcp_success_rate: 0.995
+audit_failure_rate: 0.0
+decision_completion_rate: 0.98
+hitl_resolution_p90_hours: 24

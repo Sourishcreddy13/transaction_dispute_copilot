@@ -1,0 +1,6 @@
+version: "1.0.0"
+embedding_model: sentence-transformers/all-MiniLM-L6-v2
+top_k: 3
+distance_threshold: 0.80
+rewrite_enabled: true
+rewrite_budget: 1

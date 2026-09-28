@@ -1,0 +1,66 @@
+version: "1.0.0"
+scenarios:
+  - id: F01
+    failure: Gemini primary timeout / transport failure
+    expected: fallback_to_groq
+    class: FALLBACKABLE
+  - id: F02
+    failure: Both semantic providers unavailable
+    expected: needs_info_or_human_review_no_automated_recommendation
+    class: DEGRADABLE
+  - id: F03
+    failure: MCP transaction not found
+    expected: typed_tool_error_no_fabrication
+    class: USER_ACTION_REQUIRED
+  - id: F04
+    failure: Cross-customer MCP access
+    expected: not_found_semantics_and_security_audit
+    class: FATAL
+  - id: F05
+    failure: RAG unavailable
+    expected: policy_path_degrades_to_review_or_general_investigation
+    class: DEGRADABLE
+  - id: F06
+    failure: Audit persistence failure
+    expected: fail_closed_no_release
+    class: FATAL
+  - id: F07
+    failure: Memory persistence failure
+    expected: decision_can_complete_without_memory_side_effect
+    class: DEGRADABLE
+  - id: F08
+    failure: Review compare-and-set conflict
+    expected: loser_receives_review_conflict_and_no_second_resolution
+    class: USER_ACTION_REQUIRED
+  - id: F09
+    failure: Provider structured-output schema mismatch
+    expected: retry_or_fallback_before_downstream_processing
+    class: FALLBACKABLE
+  - id: F10
+    failure: Context exceeds semantic token ceiling
+    expected: compression_or_degradation_without_unbounded_calls
+    class: DEGRADABLE
+  - id: F11
+    failure: Phoenix unavailable
+    expected: local diagnostics continue; strict evidence mode fails clearly
+    class: DEGRADABLE
+  - id: F12
+    failure: Outbox sink unavailable
+    expected: durable PENDING/FAILED state and retry, no duplicate effect
+    class: DEGRADABLE
+  - id: F13
+    failure: Invalid or expired AccessContext
+    expected: authorization failure before data access
+    class: FATAL
+  - id: F14
+    failure: Prompt-injection attempt in customer text
+    expected: quarantine and no tool execution
+    class: FATAL
+  - id: F15
+    failure: Invalid decision invariant
+    expected: fail_closed_and_no_release
+    class: FATAL
+  - id: F16
+    failure: Graph recursion / loop bound exceeded
+    expected: controlled terminal state plus audit evidence
+    class: DEGRADABLE

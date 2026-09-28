@@ -1,0 +1,12 @@
+.env
+.venv/
+.venv-phoenix/
+.deepeval
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+runtime/
+*.pyc
+.DS_Store
+traces/*.parquet

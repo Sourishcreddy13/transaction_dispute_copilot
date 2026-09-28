@@ -1,0 +1,36 @@
+[
+  {
+    "id": "E1",
+    "Answer Relevancy": {
+      "score": 1.0,
+      "reason": "The score is 1.00 because the response fully addressed the user's statement without any irrelevant content."
+    },
+    "Faithfulness": {
+      "score": 1.0,
+      "reason": "The score is 1.00 because there are no contradictions, indicating perfect faithfulness."
+    },
+    "Hallucination": {
+      "score": 1.0,
+      "reason": "The score is 1.00 because the actual output fully aligns with the provided contexts and contains no contradictions."
+    }
+  },
+  {
+    "id": "E2",
+    "skipped": "no customer-facing output yet (case pending human review); nothing for the LLM judge to score"
+  },
+  {
+    "id": "E3",
+    "Answer Relevancy": {
+      "score": 1.0,
+      "reason": "The score is 1.00 because the response fully addressed the issue without any irrelevant content."
+    },
+    "Faithfulness": {
+      "score": 1.0,
+      "reason": "The score is 1.00 because there are no contradictions to indicate any misalignment between the actual output and the retrieval context. Great job!"
+    },
+    "Hallucination": {
+      "score": 0.5,
+      "reason": "The score is 0.50 because the output partially aligns with the merchant dispute policy (chargeback routing) but contradicts the unauthorized transaction policy (provisional credit), yielding a moderate overall alignment."
+    }
+  }
+]

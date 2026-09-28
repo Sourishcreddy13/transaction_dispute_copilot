@@ -1,0 +1,64 @@
+{
+  "source": "Phoenix span export + machine-generated provider attempts + deterministic evaluation",
+  "runs": 0,
+  "span_count": 1000,
+  "latency_ms": {
+    "overall": {
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "thinking": {
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "acting": {
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "tool": {
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "end_to_end": {
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    }
+  },
+  "tokens": {
+    "input": 7506,
+    "output": 2619,
+    "total": 10125
+  },
+  "cost": {
+    "estimated_usd": 5.39e-06,
+    "pricing_basis": {
+      "input_usd_per_1k_tokens": 3e-07,
+      "output_usd_per_1k_tokens": 1.2e-06
+    }
+  },
+  "provider": {
+    "attempt_count": 55,
+    "fallback_activations": 6,
+    "fallback_rate": 0.10909090909090909
+  },
+  "accuracy": {
+    "action": 1.0,
+    "review": 1.0,
+    "intent": 1.0
+  },
+  "qualitative_eval": {
+    "Answer Relevancy": 1.0,
+    "Faithfulness": 1.0,
+    "Hallucination": 0.75
+  },
+  "quality_rates": {
+    "faithfulness_pass_rate": 1.0,
+    "answer_relevancy_pass_rate": 1.0,
+    "hallucination_rate": 0.25
+  }
+}

@@ -1,0 +1,36 @@
+version: "1.0.0"
+min_evidence_completeness: 0.70
+high_abuse_score: 0.75
+medium_fraud_score: 0.45
+high_fraud_score: 0.75
+high_value_threshold: "50000.00"
+auto_disposition: [provisional_credit, chargeback, investigate]
+rules:
+  - id: R-PROV-001
+    priority: 100
+    when: "claim.type == 'unauthorized' and txn.status == 'settled' and evidence.complete and claim.abuse_score < high_abuse_score"
+    eligible_actions: [provisional_credit, investigate]
+    primary_action: provisional_credit
+    human_review: false
+    citation: policy/unauthorized.md
+  - id: R-CHB-001
+    priority: 90
+    when: "claim.type == 'merchant_dispute' and claim.filed_within_window and evidence.complete"
+    eligible_actions: [chargeback, investigate]
+    primary_action: chargeback
+    human_review: false
+    citation: policy/merchant_dispute.md
+  - id: R-DENY-001
+    priority: 80
+    when: "claim.abuse_score >= high_abuse_score"
+    eligible_actions: [deny, investigate]
+    primary_action: deny
+    human_review: true
+    citation: policy/abuse_review.md
+  - id: R-INV-001
+    priority: 10
+    when: "true"
+    eligible_actions: [investigate]
+    primary_action: investigate
+    human_review: true
+    citation: policy/general_investigation.md

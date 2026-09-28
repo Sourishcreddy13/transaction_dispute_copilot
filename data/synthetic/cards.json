@@ -1,0 +1,5 @@
+[
+  {"card_id":"CARD-1001","customer_id":"C-1001","card_type":"credit","network":"Visa","masked_number":"**** **** **** 1001","status":"active","credit_limit":"200000.00","outstanding":"18450.00","payment_due":"18450.00","due_date":"2026-10-05"},
+  {"card_id":"CARD-1002","customer_id":"C-1002","card_type":"credit","network":"Mastercard","masked_number":"**** **** **** 2002","status":"active","credit_limit":"300000.00","outstanding":"112500.00","payment_due":"32500.00","due_date":"2026-10-03"},
+  {"card_id":"CARD-1003","customer_id":"C-1003","card_type":"debit","network":"RuPay","masked_number":"**** **** **** 3003","status":"active","credit_limit":null,"outstanding":null,"payment_due":null,"due_date":null}
+]

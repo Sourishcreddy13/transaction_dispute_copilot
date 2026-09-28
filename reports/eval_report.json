@@ -1,0 +1,254 @@
+{
+  "deterministic_evaluation": {
+    "cases": 6,
+    "pass_rate": 1.0,
+    "action_accuracy": 1.0,
+    "review_accuracy": 1.0,
+    "intent_accuracy": 1.0,
+    "results": [
+      {
+        "suite": "public",
+        "id": "E1",
+        "case_id": "CASE-F921EE8333",
+        "expected_intent": "unauthorized",
+        "actual_intent": "unauthorized",
+        "expected_action": "provisional_credit",
+        "actual_action": "provisional_credit",
+        "expected_human_review": false,
+        "actual_human_review": false,
+        "action_pass": true,
+        "review_pass": true,
+        "intent_pass": true,
+        "pass": true,
+        "provider_attempts": [
+          {
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-lite",
+            "status": "FAILED",
+            "error": "GEMINI_REQUEST_FAILED: provider call did not complete within 30.0s",
+            "latency_ms": 30393.21,
+            "attempt": 1,
+            "provider_attempt": 1,
+            "operation": "classify",
+            "run_id": "RUN-d0cc5b04b67e"
+          },
+          {
+            "provider": "groq",
+            "model": "openai/gpt-oss-120b",
+            "status": "SUCCESS",
+            "latency_ms": 1530.84,
+            "attempt": 2,
+            "provider_attempt": 1,
+            "operation": "classify",
+            "run_id": "RUN-d0cc5b04b67e",
+            "usage": {
+              "input_tokens": 469,
+              "output_tokens": 241,
+              "total_tokens": 710
+            }
+          }
+        ],
+        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "customer_view": "Your dispute is currently processed with next action: provisional credit."
+      },
+      {
+        "suite": "public",
+        "id": "E2",
+        "case_id": "CASE-24904A4658",
+        "expected_intent": "unauthorized",
+        "actual_intent": "unauthorized",
+        "expected_action": "provisional_credit",
+        "actual_action": "provisional_credit",
+        "expected_human_review": true,
+        "actual_human_review": true,
+        "action_pass": true,
+        "review_pass": true,
+        "intent_pass": true,
+        "pass": true,
+        "provider_attempts": [
+          {
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-lite",
+            "status": "SUCCESS",
+            "latency_ms": 3045.84,
+            "attempt": 1,
+            "provider_attempt": 1,
+            "operation": "classify",
+            "run_id": "RUN-0a89e7f6fd7c",
+            "usage": {
+              "input_tokens": 151,
+              "output_tokens": 57,
+              "total_tokens": 208
+            }
+          }
+        ],
+        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "customer_view": ""
+      },
+      {
+        "suite": "public",
+        "id": "E3",
+        "case_id": "CASE-4691CC3AB0",
+        "expected_intent": "merchant_dispute",
+        "actual_intent": "merchant_dispute",
+        "expected_action": "chargeback",
+        "actual_action": "chargeback",
+        "expected_human_review": false,
+        "actual_human_review": false,
+        "action_pass": true,
+        "review_pass": true,
+        "intent_pass": true,
+        "pass": true,
+        "provider_attempts": [
+          {
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-lite",
+            "status": "SUCCESS",
+            "latency_ms": 7666.55,
+            "attempt": 1,
+            "provider_attempt": 1,
+            "operation": "classify",
+            "run_id": "RUN-d18053ff7b72",
+            "usage": {
+              "input_tokens": 195,
+              "output_tokens": 60,
+              "total_tokens": 255
+            }
+          }
+        ],
+        "policy_citation": "data/policy_corpus/merchant_dispute.md",
+        "customer_view": "Your dispute is currently processed with next action: chargeback."
+      },
+      {
+        "suite": "hidden",
+        "id": "H1",
+        "case_id": "CASE-057FB3AD43",
+        "expected_intent": "unauthorized",
+        "actual_intent": "unauthorized",
+        "expected_action": "provisional_credit",
+        "actual_action": "provisional_credit",
+        "expected_human_review": false,
+        "actual_human_review": false,
+        "action_pass": true,
+        "review_pass": true,
+        "intent_pass": true,
+        "pass": true,
+        "provider_attempts": [
+          {
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-lite",
+            "status": "SUCCESS",
+            "latency_ms": 3318.82,
+            "attempt": 1,
+            "provider_attempt": 1,
+            "operation": "classify",
+            "run_id": "RUN-de7bc21915ab",
+            "usage": {
+              "input_tokens": 199,
+              "output_tokens": 58,
+              "total_tokens": 257
+            }
+          }
+        ],
+        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "customer_view": "Your dispute is currently processed with next action: provisional credit."
+      },
+      {
+        "suite": "hidden",
+        "id": "H2",
+        "case_id": "CASE-FF028FA62E",
+        "expected_intent": "unauthorized",
+        "actual_intent": "unauthorized",
+        "expected_action": "provisional_credit",
+        "actual_action": "provisional_credit",
+        "expected_human_review": true,
+        "actual_human_review": true,
+        "action_pass": true,
+        "review_pass": true,
+        "intent_pass": true,
+        "pass": true,
+        "provider_attempts": [
+          {
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-lite",
+            "status": "SUCCESS",
+            "latency_ms": 2526.12,
+            "attempt": 1,
+            "provider_attempt": 1,
+            "operation": "classify",
+            "run_id": "RUN-4c3f12fbdb4e",
+            "usage": {
+              "input_tokens": 157,
+              "output_tokens": 57,
+              "total_tokens": 214
+            }
+          }
+        ],
+        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "customer_view": ""
+      },
+      {
+        "suite": "hidden",
+        "id": "H3",
+        "case_id": "CASE-8CD3417935",
+        "expected_intent": "merchant_dispute",
+        "actual_intent": "merchant_dispute",
+        "expected_action": "chargeback",
+        "actual_action": "chargeback",
+        "expected_human_review": false,
+        "actual_human_review": false,
+        "action_pass": true,
+        "review_pass": true,
+        "intent_pass": true,
+        "pass": true,
+        "provider_attempts": [
+          {
+            "provider": "gemini",
+            "model": "gemini-3.1-flash-lite",
+            "status": "SUCCESS",
+            "latency_ms": 3743.02,
+            "attempt": 1,
+            "provider_attempt": 1,
+            "operation": "classify",
+            "run_id": "RUN-8299ac8e901d",
+            "usage": {
+              "input_tokens": 193,
+              "output_tokens": 60,
+              "total_tokens": 253
+            }
+          }
+        ],
+        "policy_citation": "data/policy_corpus/merchant_dispute.md",
+        "customer_view": "Your dispute is currently processed with next action: chargeback."
+      }
+    ]
+  },
+  "mutation_evaluation": {
+    "cases": 3,
+    "pass_rate": 1.0,
+    "results": [
+      {
+        "id": "M-HIGH-VALUE",
+        "assertion": "HIGH_VALUE in escalation_reasons",
+        "pass": true
+      },
+      {
+        "id": "M-NEW-DEVICE",
+        "assertion": "device_known is False",
+        "pass": true
+      },
+      {
+        "id": "M-ABUSE",
+        "assertion": "claim_abuse_score >= 0.75",
+        "pass": true
+      }
+    ]
+  },
+  "evaluation_design": {
+    "decision_correctness_authority": "deterministic reference assertions",
+    "hidden_cases": "evaluated from data/eval/hidden.json; expected labels never enter application prompts",
+    "mutation_cases": "causal feature mutations; no LLM judge",
+    "llm_judge_authority": "qualitative only: hallucination, faithfulness, answer relevance",
+    "expected_decision_hidden_from_judge": true
+  }
+}

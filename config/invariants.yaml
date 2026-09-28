@@ -1,0 +1,27 @@
+- id: INV-001
+  description: primary action must be eligible under the policy
+- id: INV-002
+  description: provisional credit requires evidence completeness, no high abuse unless reviewed
+- id: INV-003
+  description: chargeback recommendation must cite a policy rule
+- id: INV-004
+  description: deny requires human review
+- id: INV-005
+  description: escalation reasons and review requirement are equivalent
+- id: INV-006
+  description: security injection always escalates and is never auto-disposed
+- id: INV-007
+  description: customer-safe view does not expose internal fraud/policy details
+- id: INV-008
+  description: recommendation transaction and case remain within authorized customer scope
+- id: INV-009
+  description: citations resolve to committed corpus artifacts with matching hashes
+- id: INV-010
+  description: provenance and input snapshot are complete
+- id: INV-011
+  description: auto-disposition requires no human review
+- id: INV-012
+  applies_when: "'HIGH_VALUE' in escalation_reasons"
+  require:
+    - "human_review_required"
+  on_violation: INVARIANT_VIOLATION

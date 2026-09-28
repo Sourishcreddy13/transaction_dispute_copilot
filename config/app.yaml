@@ -1,0 +1,11 @@
+version: "1.0.0"
+max_provider_calls: 8
+max_run_seconds: 120
+max_graph_steps: 40
+semantic_task_deadline_seconds: 45
+classification_budget: 2
+context_compression_budget: 1
+rag_rewrite_budget: 1
+provider_max_attempts: 2
+access_context_ttl_seconds: 60
+review_claim_lease_seconds: 900

@@ -1,0 +1,5 @@
+[
+  {"id":"M-HIGH-VALUE","base_transaction":"T-1007","customer_id":"C-1001","mutate":{"amount":"60000.00"},"expected":"HIGH_VALUE"},
+  {"id":"M-NEW-DEVICE","base_transaction":"T-1007","customer_id":"C-1001","mutate":{"device_id":"unknown-device"},"expected":"device_anomaly"},
+  {"id":"M-ABUSE","base_transaction":"T-3001","customer_id":"C-1003","mutate":{"prior_rejected_disputes":5},"expected":"HIGH_CLAIM_ABUSE_RISK"}
+]

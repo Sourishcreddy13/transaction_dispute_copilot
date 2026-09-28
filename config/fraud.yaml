@@ -1,0 +1,12 @@
+version: "1.0.0"
+weights:
+  amount_anomaly: 0.25
+  velocity_anomaly: 0.15
+  geographic_anomaly: 0.20
+  merchant_anomaly: 0.10
+  device_anomaly: 0.15
+  temporal_anomaly: 0.05
+  card_not_present_no_auth: 0.10
+history_window_days: 90
+high_score: 0.75
+medium_score: 0.45

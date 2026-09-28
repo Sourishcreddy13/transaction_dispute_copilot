@@ -1,0 +1,15 @@
+roles:
+  customer: [case:read, case:add_evidence, txn:read, history:read, profile:read, account:read, memory:read]
+  analyst: [case:read, case:recommend, txn:read, history:read, profile:read, account:read, memory:read, case:add_evidence]
+  reviewer: [case:read, txn:read, history:read, profile:read, account:read, review:claim, review:resolve, memory:read]
+tools:
+  get_transaction: txn:read
+  get_recent_transactions: history:read
+  get_prior_disputes: history:read
+  get_customer_profile: profile:read
+  get_account_summary: account:read
+  get_statements: account:read
+four_eyes:
+  reviewer_cannot_equal:
+    - case_creator
+    - recommendation_creator

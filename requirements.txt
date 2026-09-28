@@ -1,0 +1,41 @@
+# Compatibility/reference requirements. `pip install -r requirements.txt` is
+# verified (2026-09-27) to resolve and install cleanly into a fresh Python
+# 3.12 venv, with the app running a full dispute end-to-end. See README.md
+# "Observability" for why the full `arize-phoenix` UI package is intentionally
+# NOT in this list (arize-phoenix-otel is; it's the lightweight tracer half).
+aiosqlite>=0.22
+arize-phoenix-otel>=0.17,<1
+chromadb>=1.5,<2
+deepeval>=4.2,<5
+fastapi>=0.141,<1
+# guardrails-ai removed: never imported anywhere in this codebase, and was the
+# sole cause of an unresolvable openai<2 vs openai>=3 conflict with arize-phoenix.
+httpx>=0.28,<1
+langchain>=1.4,<1.5
+langchain-core>=1.6,<1.7
+langchain-google-genai>=4.4,<5
+langchain-groq>=1.1,<2
+langchain-mcp-adapters==0.3.2
+langgraph>=1.2.11,<1.3
+langgraph-checkpoint-sqlite==3.1.1
+langmem==0.0.30
+matplotlib>=3.10,<4
+mcp>=1.27.2,<2
+opentelemetry-api>=1.45,<2
+opentelemetry-exporter-otlp-proto-http>=1.45,<2
+opentelemetry-instrumentation-fastapi>=0.66b0,<1
+opentelemetry-instrumentation-httpx>=0.66b0,<1
+opentelemetry-sdk>=1.45,<2
+openinference-instrumentation-langchain>=0.1,<1
+presidio-analyzer>=2.2,<3
+presidio-anonymizer>=2.2,<3
+pydantic>=2.13,<3
+pydantic-settings>=2.15,<3
+python-dotenv>=1.1,<2
+PyYAML>=6.0,<7
+sentence-transformers>=6.1,<7
+sqlalchemy>=2.0,<3
+uvicorn[standard]>=0.35,<1
+
+# Optional evidence/dev tooling
+playwright>=1.55,<2

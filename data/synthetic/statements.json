@@ -1,0 +1,11 @@
+[
+  {"statement_id":"ST-1001-07","account_id":"A-1001","period_start":"2026-06-01","period_end":"2026-06-30","opening_balance":"140000.00","credits":"50000.00","debits":"34400.00","closing_balance":"155600.00","statement_date":"2026-07-01","status":"issued"},
+  {"statement_id":"ST-1001-08","account_id":"A-1001","period_start":"2026-07-01","period_end":"2026-07-31","opening_balance":"155600.00","credits":"47000.00","debits":"47000.00","closing_balance":"155600.00","statement_date":"2026-08-01","status":"issued"},
+  {"statement_id":"ST-1001-09","account_id":"A-1001","period_start":"2026-08-01","period_end":"2026-08-31","opening_balance":"155600.00","credits":"49200.00","debits":"56549.60","closing_balance":"148250.40","statement_date":"2026-09-01","status":"issued"},
+  {"statement_id":"ST-1002-07","account_id":"A-1002","period_start":"2026-06-01","period_end":"2026-06-30","opening_balance":"500000.00","credits":"90000.00","debits":"50000.00","closing_balance":"540000.00","statement_date":"2026-07-01","status":"issued"},
+  {"statement_id":"ST-1002-08","account_id":"A-1002","period_start":"2026-07-01","period_end":"2026-07-31","opening_balance":"540000.00","credits":"100000.00","debits":"50000.00","closing_balance":"590000.00","statement_date":"2026-08-01","status":"issued"},
+  {"statement_id":"ST-1002-09","account_id":"A-1002","period_start":"2026-08-01","period_end":"2026-08-31","opening_balance":"590000.00","credits":"120000.00","debits":"185099.90","closing_balance":"524900.10","statement_date":"2026-09-01","status":"issued"},
+  {"statement_id":"ST-1003-07","account_id":"A-1003","period_start":"2026-06-01","period_end":"2026-06-30","opening_balance":"70000.00","credits":"20000.00","debits":"15000.00","closing_balance":"75000.00","statement_date":"2026-07-01","status":"issued"},
+  {"statement_id":"ST-1003-08","account_id":"A-1003","period_start":"2026-07-01","period_end":"2026-07-31","opening_balance":"75000.00","credits":"30000.00","debits":"15000.00","closing_balance":"90000.00","statement_date":"2026-08-01","status":"issued"},
+  {"statement_id":"ST-1003-09","account_id":"A-1003","period_start":"2026-08-01","period_end":"2026-08-31","opening_balance":"90000.00","credits":"25000.00","debits":"32549.25","closing_balance":"82450.75","statement_date":"2026-09-01","status":"issued"}
+]

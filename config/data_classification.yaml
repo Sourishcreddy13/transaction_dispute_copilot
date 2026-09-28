@@ -1,0 +1,22 @@
+classes:
+  customer_id: CUSTOMER_CONFIDENTIAL
+  account_id: CUSTOMER_CONFIDENTIAL
+  transaction_id: CUSTOMER_CONFIDENTIAL
+  amount: FINANCIAL
+  merchant: CUSTOMER_CONFIDENTIAL
+  card.masked_number: CUSTOMER_CONFIDENTIAL
+  card.number: PCI
+  account.number: PCI
+  customer.phone_masked: PII
+  customer.address_masked: PII
+  dispute_message.raw: PII
+  dispute_message.masked: CUSTOMER_CONFIDENTIAL
+  auth.access_context: AUTH_SECRET
+sinks:
+  llm_input: [CUSTOMER_CONFIDENTIAL, FINANCIAL, PII]
+  logs: [CUSTOMER_CONFIDENTIAL]
+  phoenix: [CUSTOMER_CONFIDENTIAL, FINANCIAL]
+  audit: [CUSTOMER_CONFIDENTIAL, FINANCIAL]
+  customer_view: [CUSTOMER_CONFIDENTIAL]
+  evidence: [CUSTOMER_CONFIDENTIAL, FINANCIAL]
+untagged: deny
