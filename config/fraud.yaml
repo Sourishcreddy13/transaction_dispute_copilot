@@ -2,6 +2,7 @@ version: "1.0.0"
 weights:
   amount_anomaly: 0.25
   velocity_anomaly: 0.15
+  velocity_15m_anomaly: 0.10
   geographic_anomaly: 0.20
   merchant_anomaly: 0.10
   device_anomaly: 0.15

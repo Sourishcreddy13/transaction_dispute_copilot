@@ -26,16 +26,13 @@ class AgenticPolicyRAG:
         attempts = [query, self._widen(query)]
 
         for current_query in attempts:
-            hits = self.rag.search(current_query, k)
+            hits = self.rag.search(current_query, k, run_id=run_id)
             if hits:
                 return hits
 
         if self.semantic_gateway is not None and os.getenv("RAG_LLM_REWRITE", "0") == "1":
-            try:
-                rewrite = self.semantic_gateway.rewrite_query(query, run_id=run_id)
-                return self.rag.search(rewrite.rewritten_query, k)
-            except Exception:
-                pass
+            rewrite = self.semantic_gateway.rewrite_query(query, run_id=run_id)
+            return self.rag.search(rewrite.rewritten_query, k, run_id=run_id)
 
         return []
 

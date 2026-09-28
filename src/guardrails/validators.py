@@ -55,5 +55,6 @@ def validate_release_invariants(response: dict) -> None:
         if rec.get("primary_action") == "deny" and not rec.get("human_review_required"):
             raise ValueError("OUTPUT_DENY_REVIEW_REQUIRED")
     if response.get("case_state") == "PENDING_REVIEW" and not response.get("review_task"):
-        # A pending review without a task is not releasable to a reviewer/customer.
-        return
+        raise ValueError("OUTPUT_REVIEW_TASK_MISSING")
+    if response.get("injection_flag") and rec and not rec.get("human_review_required"):
+        raise ValueError("OUTPUT_SECURITY_FLAG_NOT_ESCALATED")

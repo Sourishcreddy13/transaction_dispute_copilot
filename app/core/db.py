@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOG_DIR = PROJECT_ROOT / "logs"
+
+
 class DB:
     """SQLite persistence for the local reference implementation.
 
@@ -266,7 +270,7 @@ class DB:
             )
             c.execute("UPDATE cases SET audit_state=? WHERE case_id=?", ("COMMITTED", cid))
 
-        Path("logs").mkdir(parents=True, exist_ok=True)
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
         event = {
             "timestamp": now,
             "actor": payload.get("actor_id", payload.get("reviewer_id", "system")),
@@ -277,7 +281,7 @@ class DB:
             "event_hash": event_hash,
             "payload": payload,
         }
-        with Path("logs/agent_actions.jsonl").open("a", encoding="utf-8") as f:
+        with (LOG_DIR / "agent_actions.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(event, default=str) + "\n")
         return event_hash
 
@@ -425,9 +429,9 @@ class DB:
                 ("case.finalized", f"final-disposition:{tid}", raw, now),
             )
 
-        Path("logs").mkdir(parents=True, exist_ok=True)
-        with Path("logs/agent_actions.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"timestamp": now, "actor": reviewer, "action": "final_disposition", "tool": None, "decision": action, "case_id": case_id, "event_hash": event_hash}, default=str) + "\n")
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with (LOG_DIR / "agent_actions.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"timestamp": now, "actor": reviewer, "action": "final_disposition", "tool": None, "decision": action, "case_id": case_id, "event_hash": event_hash, "payload": payload}, default=str) + "\n")
         return True
 
     def enqueue(self, topic: str, key: str, payload: dict[str, Any]) -> None:

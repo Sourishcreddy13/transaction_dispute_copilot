@@ -1,54 +1,13 @@
 from __future__ import annotations
 
-import csv
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import yaml
 
-
-def _parse_iso(ts: str | None) -> datetime | None:
-    if not ts:
-        return None
-    try:
-        # Phoenix/OTel exports RFC3339 with a trailing "Z"; datetime.fromisoformat
-        # (py<3.11) doesn't accept "Z" directly.
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def _span_latency_ms(span: dict) -> float:
-    """Real Phoenix/OpenInference export schema carries start_time/end_time
-    (ISO-8601 strings), NOT a top-level latency_ms field. Compute it here so the
-    golden-signals report reflects actual measured span duration instead of a
-    key that was never populated by the exporter (see docs/deviations.md D-03)."""
-    start = _parse_iso(span.get("start_time"))
-    end = _parse_iso(span.get("end_time"))
-    if start is None or end is None:
-        return 0.0
-    return max(0.0, (end - start).total_seconds() * 1000.0)
-
-
-def _span_run_id(span: dict) -> str | None:
-    """Real export nests custom attributes under dotted keys, e.g.
-    "attributes.run_id", not a top-level "run_id"."""
-    return span.get("attributes.run_id") or span.get("run_id") or (span.get("attributes") or {}).get("run_id")
-
-
-def _span_usage(span: dict) -> dict:
-    """Token usage lives under attributes.llm.token_count.* in the real export,
-    not under a top-level "usage" object."""
-    if span.get("usage"):
-        return span["usage"]
-    return {
-        "input_tokens": span.get("attributes.llm.token_count.prompt", 0) or 0,
-        "output_tokens": span.get("attributes.llm.token_count.completion", 0) or 0,
-        "total_tokens": span.get("attributes.llm.token_count.total", 0) or 0,
-    }
+from _phoenix_evidence import application_traces, is_llm_span, model, provider, span_latency_ms, usage
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "reports"
@@ -58,185 +17,208 @@ REPORTS.mkdir(parents=True, exist_ok=True)
 def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    result: list[dict] = []
+    rows: list[dict] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
-            result.append(json.loads(line))
+            rows.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-    return result
-
-
-
-def _span_kind(span: dict) -> str:
-    name = span.get("name")
-    oi_kind = (span.get("attributes.openinference.span.kind") or span.get("span_kind") or "").upper()
-    text = (name or "").lower()
-    if text.startswith("tool.") or oi_kind == "TOOL":
-        return "tool"
-    if text.startswith("copilot.run"):
-        return "end_to_end"
-    if text.startswith("agent.") or text.startswith("copilot.review"):
-        return "acting"
-    if oi_kind == "LLM" or any(x in text for x in ("llm", "chat", "generate", "gemini", "groq")):
-        return "thinking"
-    return "acting"
+    return rows
 
 
 def percentile(values: list[float], q: float) -> float | None:
     if not values:
         return None
     ordered = sorted(values)
-    idx = min(len(ordered) - 1, max(0, math.ceil(q * len(ordered)) - 1))
-    return round(ordered[idx], 2)
+    index = min(len(ordered) - 1, max(0, math.ceil(q * len(ordered)) - 1))
+    return round(ordered[index], 2)
 
 
-def _kind_percentiles(values: list[float]) -> dict[str, float | None]:
-    return {"p50": percentile(values, .50), "p95": percentile(values, .95), "p99": percentile(values, .99)}
+def kind_for(span: dict) -> str:
+    name = str(span.get("name") or "").lower()
+    kind = str(span.get("span_kind") or span.get("attributes.openinference.span.kind") or "").upper()
+    if kind == "TOOL" or name.startswith("tool.") or span.get("attributes.tool.name"):
+        return "tool"
+    if name == "copilot.run":
+        return "end_to_end"
+    if kind == "LLM" or is_llm_span(span):
+        return "thinking"
+    return "acting"
 
 
-def _pass_rate(items: list[dict], name: str, threshold: float) -> float | None:
-    vals = [float(item[name]["score"]) for item in items if item.get(name, {}).get("score") is not None]
-    return sum(v >= threshold for v in vals) / len(vals) if vals else None
+def load_quality() -> list[dict]:
+    path = REPORTS / "deepeval_qualitative.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
-def _error_rate_from_aligned_score(items: list[dict], name: str) -> float | None:
-    vals = [float(item[name]["score"]) for item in items if item.get(name, {}).get("score") is not None]
-    return 1.0 - sum(vals) / len(vals) if vals else None
+def load_eval() -> dict:
+    path = REPORTS / "eval_report.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def quality_summary(items: list[dict]) -> tuple[dict[str, float | None], int, int]:
+    keys = ("Answer Relevancy", "Faithfulness", "Hallucination")
+    scored = [item for item in items if not item.get("skipped")]
+    skipped = [item for item in items if item.get("skipped")]
+    summary: dict[str, float | None] = {}
+    for key in keys:
+        vals = [float(item[key]["score"]) for item in scored if item.get(key, {}).get("score") is not None]
+        summary[key] = round(sum(vals) / len(vals), 4) if vals else None
+    return summary, len(scored), len(skipped)
 
 
 spans = load_jsonl(ROOT / "traces" / "phoenix_spans.jsonl")
-providers = load_jsonl(ROOT / "logs" / "model_provider.jsonl")
-qual_path = REPORTS / "deepeval_qualitative.json"
-eval_path = REPORTS / "eval_report.json"
-qualitative_cases = json.loads(qual_path.read_text()) if qual_path.exists() else []
-eval_report = json.loads(eval_path.read_text()) if eval_path.exists() else {}
-provider_config = yaml.safe_load((ROOT / "config/providers.yaml").read_text()) or {}
-pricing = provider_config.get("pricing", {})
+if not spans:
+    raise RuntimeError("No Phoenix spans available.")
 
-provider_by_run: dict[str, dict] = {}
-for row in providers:
-    if row.get("run_id"):
-        provider_by_run[row["run_id"]] = row
+application = application_traces(spans)
+if not application:
+    raise RuntimeError("No copilot.run application traces were found in Phoenix export.")
 
-# Turn Phoenix/provider records into one evidence table.
-rows: list[dict] = []
-for span in spans:
-    run_id = _span_run_id(span)
-    provider = provider_by_run.get(run_id, {})
-    usage = _span_usage(span)
-    rows.append(
-        {
-            "name": span.get("name"),
-            "kind": _span_kind(span),
-            "run_id": run_id,
-            "case_id": span.get("attributes.case_id") or span.get("case_id"),
-            "trace_id": span.get("context.trace_id") or span.get("trace_id"),
-            "span_id": span.get("context.span_id") or span.get("span_id"),
-            "latency_ms": _span_latency_ms(span),
-            "provider": provider.get("provider") or span.get("attributes.llm.provider") or span.get("llm.provider"),
-            "provider_status": provider.get("status"),
-            "input_tokens": int(usage.get("input_tokens", 0) or 0),
-            "output_tokens": int(usage.get("output_tokens", 0) or 0),
-            "total_tokens": int(usage.get("total_tokens", 0) or 0),
-            "estimated_cost_usd": span.get("estimated_cost_usd", 0) or 0,
-        }
+application_spans = [span for trace in application.values() for span in trace["spans"]]
+all_llm_spans = [span for span in spans if is_llm_span(span)]
+if not all_llm_spans:
+    raise RuntimeError("Phoenix export contains no LLM spans with token/provider telemetry.")
+
+by_kind: dict[str, list[float]] = {"thinking": [], "acting": [], "tool": [], "end_to_end": []}
+for span in application_spans:
+    by_kind.setdefault(kind_for(span), []).append(span_latency_ms(span))
+
+provider_config = yaml.safe_load((ROOT / "config/providers.yaml").read_text(encoding="utf-8")) or {}
+provider_prices = {
+    name: (
+        float(cfg.get("pricing", {}).get("input_usd_per_1m_tokens", 0.0)),
+        float(cfg.get("pricing", {}).get("output_usd_per_1m_tokens", 0.0)),
+    )
+    for name, cfg in provider_config.get("providers", {}).items()
+}
+
+input_tokens = 0
+output_tokens = 0
+cost_by_provider: dict[str, float] = {}
+usage_by_provider: dict[str, dict[str, int]] = {}
+for span in all_llm_spans:
+    p = provider(span) or "unknown"
+    u = usage(span)
+    input_tokens += u["input_tokens"]
+    output_tokens += u["output_tokens"]
+    bucket = usage_by_provider.setdefault(p, {"input": 0, "output": 0, "total": 0, "calls": 0})
+    bucket["input"] += u["input_tokens"]
+    bucket["output"] += u["output_tokens"]
+    bucket["total"] += u["total_tokens"]
+    bucket["calls"] += 1
+    in_price, out_price = provider_prices.get(p, (0.0, 0.0))
+    cost_by_provider[p] = cost_by_provider.get(p, 0.0) + (
+        u["input_tokens"] / 1_000_000 * in_price
+        + u["output_tokens"] / 1_000_000 * out_price
     )
 
-fields = list(rows[0].keys()) if rows else [
-    "name", "kind", "run_id", "case_id", "trace_id", "span_id", "latency_ms",
-    "provider", "provider_status", "input_tokens", "output_tokens", "total_tokens",
-    "estimated_cost_usd",
-]
-with (REPORTS / "dashboard_data.csv").open("w", newline="", encoding="utf-8") as handle:
-    writer = csv.DictWriter(handle, fieldnames=fields)
-    writer.writeheader()
-    writer.writerows(rows)
-
-latencies = [float(x["latency_ms"]) for x in rows if x.get("latency_ms") is not None]
-by_kind: dict[str, list[float]] = {}
-for row in rows:
-    by_kind.setdefault(row["kind"], []).append(float(row["latency_ms"] or 0))
-
-input_tokens = sum(int(x.get("input_tokens") or 0) for x in rows)
-output_tokens = sum(int(x.get("output_tokens") or 0) for x in rows)
-if not input_tokens and not output_tokens:
-    for provider in providers:
-        usage = provider.get("usage") or {}
-        input_tokens += int(usage.get("input_tokens") or 0)
-        output_tokens += int(usage.get("output_tokens") or 0)
-
 total_tokens = input_tokens + output_tokens
-input_price = float(pricing.get("input_usd_per_1k_tokens", 0.0))
-output_price = float(pricing.get("output_usd_per_1k_tokens", 0.0))
-estimated_cost = input_tokens / 1000 * input_price + output_tokens / 1000 * output_price
+total_cost = round(sum(cost_by_provider.values()), 10)
 
-fallbacks = sum(1 for x in providers if x.get("status") == "SUCCESS" and int(x.get("attempt", 1)) > 1)
-run_count = len({r.get("run_id") for r in rows if r.get("run_id")})
+provider_log = load_jsonl(ROOT / "logs" / "model_provider.jsonl")
+primary = provider_config.get("primary", "gemini")
+fallback_name = provider_config.get("fallback", "groq")
+by_run: dict[str, list[dict]] = {}
+for attempt in provider_log:
+    rid = attempt.get("run_id")
+    if rid:
+        by_run.setdefault(rid, []).append(attempt)
 
-deterministic = eval_report.get("deterministic_evaluation", {})
-quality_scores: dict[str, float | None] = {}
-for metric_name in ("Answer Relevancy", "Faithfulness", "Hallucination"):
-    vals = [
-        float(item[metric_name]["score"])
-        for item in qualitative_cases
-        if item.get(metric_name, {}).get("score") is not None
-    ]
-    quality_scores[metric_name] = sum(vals) / len(vals) if vals else None
+fallback_activations = sum(
+    any(a.get("provider") == fallback_name for a in attempts)
+    for attempts in by_run.values()
+)
+fallback_successes = sum(
+    any(a.get("provider") == fallback_name and a.get("status") == "SUCCESS" for a in attempts)
+    for attempts in by_run.values()
+)
+
+quality, scored_cases, skipped_cases = quality_summary(load_quality())
+eval_report = load_eval().get("deterministic_evaluation", {})
+trace_sha = __import__("hashlib").sha256(
+    (ROOT / "traces" / "phoenix_spans.jsonl").read_bytes()
+).hexdigest()
 
 report = {
     "source": "Phoenix span export + machine-generated provider attempts + deterministic evaluation",
-    "runs": run_count,
-    "span_count": len(spans),
-    "latency_ms": {
-        "overall": {"p50": percentile(latencies, .50), "p95": percentile(latencies, .95), "p99": percentile(latencies, .99)},
-        "thinking": _kind_percentiles(by_kind.get("thinking", [])),
-        "acting": _kind_percentiles(by_kind.get("acting", [])),
-        "tool": _kind_percentiles(by_kind.get("tool", [])),
-        "end_to_end": _kind_percentiles(by_kind.get("end_to_end", [])),
+    "source_artifact": "traces/phoenix_spans.jsonl",
+    "source_sha256": trace_sha,
+    "generated_at": datetime.now(timezone.utc).isoformat(),
+    "telemetry_scope": {
+        "latency": "application traces containing copilot.run",
+        "tokens_and_cost": "all LLM spans in the evidence time window, including evaluation/DeepEval judge calls because Phoenix does not currently correlate those child LLM spans to copilot.run",
+        "provider_fallback": "machine-generated provider attempts from the fresh evidence run only",
     },
-    "tokens": {"input": input_tokens, "output": output_tokens, "total": total_tokens},
-    "cost": {
-        "estimated_usd": round(estimated_cost, 8),
-        "pricing_basis": {
-            "input_usd_per_1k_tokens": input_price,
-            "output_usd_per_1k_tokens": output_price,
+    "runs": len(application),
+    "span_count": len(application_spans),
+    "llm_span_count": len(all_llm_spans),
+    "latency_ms": {
+        "overall": {
+            "p50": percentile([span_latency_ms(s) for s in application_spans], 0.50),
+            "p95": percentile([span_latency_ms(s) for s in application_spans], 0.95),
+            "p99": percentile([span_latency_ms(s) for s in application_spans], 0.99),
+        },
+        **{
+            kind: {
+                "p50": percentile(values, 0.50),
+                "p95": percentile(values, 0.95),
+                "p99": percentile(values, 0.99),
+            }
+            for kind, values in by_kind.items()
         },
     },
+    "tokens": {
+        "input": input_tokens,
+        "output": output_tokens,
+        "total": total_tokens,
+        "by_provider": usage_by_provider,
+    },
+    "cost": {
+        "estimated_usd": total_cost,
+        "by_provider": {k: round(v, 10) for k, v in sorted(cost_by_provider.items())},
+        "pricing_basis": {
+            name: {
+                "input_usd_per_1m_tokens": values[0],
+                "output_usd_per_1m_tokens": values[1],
+            }
+            for name, values in provider_prices.items()
+        },
+        "basis_date": "2026-09-28",
+    },
     "provider": {
-        "attempt_count": len(providers),
-        "fallback_activations": fallbacks,
-        "fallback_rate": fallbacks / len(providers) if providers else 0.0,
+        "primary": primary,
+        "fallback": fallback_name,
+        "attempt_count": len(provider_log),
+        "run_count": len(by_run),
+        "fallback_activations": fallback_activations,
+        "fallback_successes": fallback_successes,
+        "fallback_rate": fallback_activations / len(by_run) if by_run else 0.0,
     },
     "accuracy": {
-        "action": deterministic.get("action_accuracy"),
-        "review": deterministic.get("review_accuracy"),
-        "intent": deterministic.get("intent_accuracy"),
+        "action": eval_report.get("action_accuracy"),
+        "review": eval_report.get("review_accuracy"),
+        "intent": eval_report.get("intent_accuracy"),
     },
-    "qualitative_eval": quality_scores,
+    "qualitative_eval": {
+        "scored_cases": scored_cases,
+        "skipped_cases": skipped_cases,
+        "metrics": quality,
+    },
     "quality_rates": {
-        "faithfulness_pass_rate": _pass_rate(qualitative_cases, "Faithfulness", .8),
-        "answer_relevancy_pass_rate": _pass_rate(qualitative_cases, "Answer Relevancy", .8),
-        "hallucination_rate": _error_rate_from_aligned_score(qualitative_cases, "Hallucination"),
+        "faithfulness_pass_rate": (
+            sum(float(item["Faithfulness"]["score"]) >= 0.8 for item in load_quality() if item.get("Faithfulness")) / scored_cases
+            if scored_cases else None
+        ),
+        "answer_relevancy_pass_rate": (
+            sum(float(item["Answer Relevancy"]["score"]) >= 0.8 for item in load_quality() if item.get("Answer Relevancy")) / scored_cases
+            if scored_cases else None
+        ),
+        "hallucination_rate": (
+            1.0 - quality["Hallucination"] if quality["Hallucination"] is not None else None
+        ),
     },
 }
 
-
-# Sanity check: this report exists specifically to prove Phoenix-derived latency
-# is being measured (AC-09). If the span schema drifts again in a future export
-# and every latency bucket comes back empty, fail loudly here instead of quietly
-# committing a report full of zeros.
-if spans and report["runs"] == 0:
-    raise RuntimeError(
-        "golden_signals: found %d Phoenix spans but resolved 0 distinct run_ids -- "
-        "check that traces/phoenix_spans.jsonl's schema still matches "
-        "_span_run_id()/_span_latency_ms() in this script." % len(spans)
-    )
-if spans and all(v is None for v in report["latency_ms"]["overall"].values()):
-    raise RuntimeError(
-        "golden_signals: found %d Phoenix spans but computed no latency samples -- "
-        "check start_time/end_time parsing in _span_latency_ms()." % len(spans)
-    )
-
-(REPORTS / "golden_signals.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+(REPORTS / "golden_signals.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 print(REPORTS / "golden_signals.json")

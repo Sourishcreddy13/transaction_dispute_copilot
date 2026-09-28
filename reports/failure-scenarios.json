@@ -1,8 +1,9 @@
 [
   {
-    "scenario": "semantic_provider_exhaustion",
+    "scenario": "gemini_primary_failure_fallback",
     "status": "handled",
     "run_id": "FAIL-FALLBACK-001",
+    "failure_type": "primary_provider_failure",
     "provider_attempts": [
       {
         "provider": "gemini",
@@ -17,90 +18,28 @@
       },
       {
         "provider": "groq",
-        "model": "openai/gpt-oss-120b",
-        "status": "FAILED",
-        "error": "GROQ_API_KEY_NOT_SET",
-        "latency_ms": 291.89,
+        "model": "openai/gpt-oss-20b",
+        "status": "SUCCESS",
+        "latency_ms": 1424.03,
         "attempt": 2,
         "provider_attempt": 1,
         "operation": "classify",
-        "run_id": "FAIL-FALLBACK-001"
+        "run_id": "FAIL-FALLBACK-001",
+        "usage": {
+          "input_tokens": 439,
+          "output_tokens": 443,
+          "total_tokens": 882
+        }
       }
     ],
-    "provider_log_ref": [
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 17,
-        "provider": "gemini",
-        "status": "FAILED",
-        "latency_ms": 0.0
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 18,
-        "provider": "groq",
-        "status": "SUCCESS",
-        "latency_ms": 1316.17
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 28,
-        "provider": "gemini",
-        "status": "FAILED",
-        "latency_ms": 0.01
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 29,
-        "provider": "groq",
-        "status": "SUCCESS",
-        "latency_ms": 1551.66
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 54,
-        "provider": "gemini",
-        "status": "FAILED",
-        "latency_ms": 0.0
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 55,
-        "provider": "groq",
-        "status": "SUCCESS",
-        "latency_ms": 1483.32
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 56,
-        "provider": "gemini",
-        "status": "FAILED",
-        "latency_ms": 0.01
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 57,
-        "provider": "groq",
-        "status": "FAILED",
-        "latency_ms": 486.31
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 65,
-        "provider": "gemini",
-        "status": "FAILED",
-        "latency_ms": 0.0
-      },
-      {
-        "artifact": "logs/model_provider.jsonl",
-        "line": 66,
-        "provider": "groq",
-        "status": "FAILED",
-        "latency_ms": 291.89
-      }
-    ],
-    "root_cause": "Both semantic attempts failed or were fault-injected.",
-    "fix": "The workflow converts semantic exhaustion into NEEDS_INFO/human review rather than releasing a decision."
+    "phoenix_ref": {
+      "artifact": "traces/phoenix_spans.jsonl",
+      "run_id": "FAIL-FALLBACK-001",
+      "trace_id": "204883b41053d9faaf7e29df6b517cd7",
+      "span_id": "6c82da35920c6390"
+    },
+    "root_cause": "Gemini was deliberately fault-injected for resilience verification.",
+    "fix": "The provider gateway activates Groq fallback and records the provider attempts without releasing an unsafe decision."
   },
   {
     "scenario": "cross_customer_transaction_access",
@@ -108,13 +47,14 @@
     "error": "TXN_NOT_FOUND",
     "tool_log_ref": {
       "artifact": "logs/tool_calls.jsonl",
-      "line": 311,
+      "line": 63,
       "tool_name": "get_transaction",
-      "timestamp": 1790578450.681571,
-      "status": "ERROR"
+      "transaction_id": "T-2001",
+      "status": "ERROR",
+      "error": "TXN_NOT_FOUND"
     },
     "root_cause": "Requested transaction belongs to another synthetic customer.",
-    "fix": "MCP data-plane checks signed case customer binding and returns TXN_NOT_FOUND semantics."
+    "fix": "The MCP data plane checks the signed case/customer binding and refuses cross-customer access."
   },
   {
     "scenario": "unknown_transaction",
@@ -122,12 +62,13 @@
     "error": "TXN_NOT_FOUND",
     "tool_log_ref": {
       "artifact": "logs/tool_calls.jsonl",
-      "line": 312,
+      "line": 64,
       "tool_name": "get_transaction",
-      "timestamp": 1790578450.682529,
-      "status": "ERROR"
+      "transaction_id": "T-NOT-EXIST",
+      "status": "ERROR",
+      "error": "TXN_NOT_FOUND"
     },
     "root_cause": "The requested synthetic transaction does not exist.",
-    "fix": "Tool failure is typed and cannot become fabricated transaction data."
+    "fix": "The MCP tool returns typed TXN_NOT_FOUND semantics instead of fabricating transaction data."
   }
 ]

@@ -32,22 +32,38 @@ from app.core.semantic import PROVIDER_TIMEOUT_S, _invoke_with_deadline
 
 
 def _is_fallback_worthy(exc: Exception) -> bool:
-    """True for errors where retrying the SAME provider/model can never help:
-    quota exhaustion (429 RESOURCE_EXHAUSTED, including a hard 0-quota tier),
-    rate limits, 5xx server-side unavailability, and a call that hit our own
-    hard timeout (TimeoutError/asyncio.TimeoutError -- an alias of the same
-    builtin type as of Python 3.11+, which this project already requires).
-    Anything else (bad schema, bad API key format, programming errors) is
-    re-raised as-is rather than silently masked by a fallback that would fail
-    identically."""
-    if isinstance(exc, TimeoutError):
+    """Return True when switching providers is preferable to retrying Gemini."""
+    if isinstance(exc, (TimeoutError, ConnectionError)):
         return True
+
     text = str(exc)
+
     tokens = (
-        "RESOURCE_EXHAUSTED", "429", "rate limit", "RateLimit", "ratelimit",
-        "quota", "Quota", "503", "502", "500", "UNAVAILABLE", "temporarily unavailable",
+        "RESOURCE_EXHAUSTED",
+        "429",
+        "rate limit",
+        "RateLimit",
+        "ratelimit",
+        "quota",
+        "Quota",
+        "503",
+        "502",
+        "500",
+        "UNAVAILABLE",
+        "temporarily unavailable",
+        "ClientConnectorError",
+        "ClientConnectorDNSError",
+        "ClientConnectorConnectionError",
+        "NameResolutionError",
+        "nodename nor servname provided",
+        "Temporary failure in name resolution",
+        "Connection refused",
+        "connection reset",
+        "connection aborted",
+        "Cannot connect to host",
     )
-    return any(t in text for t in tokens)
+
+    return any(token in text for token in tokens)
 
 
 class GeminiWithGroqFallback(DeepEvalBaseLLM):

@@ -1,0 +1,11 @@
+{
+  "generated_by": "scripts/build_dashboard.py",
+  "source": "traces/phoenix_spans.jsonl",
+  "source_sha256": "59296102eaaddf38ca54178c74c0c8c86ab6806e2c6cc6f868b5e08be271ab34",
+  "application_trace_count": 9,
+  "exported_span_count": 541,
+  "dashboard_row_count": 541,
+  "token_cost_scope": "all Phoenix LLM spans in the evidence time window",
+  "latency_scope": "all Phoenix spans in the evidence time window",
+  "pricing_source": "config/providers.yaml"
+}

@@ -7,15 +7,18 @@ providers:
     structured_output: true
     json_schema: true
     tool_calling: false
+    pricing:
+      input_usd_per_1m_tokens: 0.25
+      output_usd_per_1m_tokens: 1.50
   groq:
     model: openai/gpt-oss-120b
     structured_output: true
     json_schema: true
     tool_calling: false
+    pricing:
+      input_usd_per_1m_tokens: 0.15
+      output_usd_per_1m_tokens: 0.60
 capability_contract:
   required:
     - structured_output
     - json_schema
-pricing:
-  input_usd_per_1k_tokens: 0.0000003
-  output_usd_per_1k_tokens: 0.0000012

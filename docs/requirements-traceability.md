@@ -1,30 +1,39 @@
-# Requirements Traceability — Transaction Dispute & Fraud-Triage Copilot
+# Requirements Traceability
 
-This file maps the assessment requirements to implementation artifacts. The requirements specification states that only committed, reproducible evidence is scored and lists the exact artifact paths. See `requirements_and_artifacts_specification.md` in the source package.
+This document maps the assessment specification to the corrected implementation.
+A status of **Implemented** means the code path exists and is covered by tests.
+A status of **Generated on run** means the committed code generates the required
+runtime evidence.
 
-| Requirement | Implementation | Test / evidence | Status |
+| Requirement | Implementation | Verification | Status |
 |---|---|---|---|
-| AC-01 | `src/graph.py`, `src/agents/workers.py`, `src/tools/rag_tool.py` | `tests/test_routing.py`, `scripts/generate_evidence.py` | IMPLEMENTED |
-| AC-02 | `app/core/engines.py` | `tests/test_policy.py` | IMPLEMENTED |
-| AC-03 | `app/core/engines.py` + `config/decision_policy.yaml` | `tests/test_policy.py` | IMPLEMENTED |
-| AC-04 | `src/agents/workers.py`, `src/graph.py` | `tests/test_routing.py` | IMPLEMENTED |
-| AC-05 | `src/context/engineering.py`, checkpoint, `src/memory/store.py` | `tests/test_memory_persistence.py` | IMPLEMENTED |
-| AC-06 | `app/core/pii.py`, `src/context/engineering.py`, `app/core/security.py`, `src/guardrails/validators.py` | `tests/test_pii.py`, `tests/test_idor.py` | IMPLEMENTED |
-| AC-07 | `mcp_server/server.py` | `logs/tool_calls.jsonl`, `logs/mcp_transcript.jsonl` | GENERATED ON RUN |
-| AC-08 | `scripts/run_failure_scenarios.py` | `docs/failure-analysis.md` | GENERATED FROM REAL RUNS |
-| AC-09 | `src/observability/tracing.py` (real Phoenix OTLP registration, with a verified workaround for a real `arize-phoenix-otel==0.17.1` upstream bug — see README "Observability" bug 16b), `scripts/export_traces.py` (current `phoenix.client.Client` API, run via `.venv-phoenix` — bug 16a), `scripts/build_dashboard.py` | `traces/`, `reports/golden_signals.json`, `reports/dashboard.png`, `reports/dashboard_data.csv` (dashboard.png captured from live Phoenix UI), `tests/test_tracing_phoenix_register_workaround.py` | GENERATED ON RUN |
-| AC-10 | `src/guardrails/validators.py`, audit middleware in `app/core/db.py` | `logs/agent_actions.jsonl`, `tests/test_guardrails.py` | IMPLEMENTED |
-| AC-11 | `docs/risk-register.md`, `docs/model-card.md`, `docs/compliance.md`, `docs/output-risk.md` | control IDs linked from docs | IMPLEMENTED |
-| AC-12 | `app/eval/deepeval_suite.py` (LLM-judge, with Gemini→Groq fallback per D-01 — see `GeminiWithGroqFallback`, whose Groq call uses `method="json_schema"`, verified against the live Groq API — README bug 17; `run_qualitative_eval` keys its per-metric results by `metric.__name__`, not the nonexistent `.name` — README bug 18; `run_qualitative_eval` skips, rather than crashes on, a case with no customer-facing output yet (e.g. pending human review) instead of handing DeepEval an empty `actual_output` — README bug 21), `app/eval/run_eval.py` | `reports/eval_report.json`, `reports/deepeval_qualitative.json`, `tests/test_routing.py`, `tests/test_loops.py`, `tests/test_tool_contracts.py`, `tests/test_deepeval_judge_fallback.py` (judge fails over to Groq on Gemini quota/rate-limit/5xx, not on unrelated errors, and asserts `method="json_schema"` is used), `tests/test_deepeval_qualitative_result_keys.py` (asserts `run_qualitative_eval` builds its result dict from `metric.__name__` and skips cases with empty customer-facing output) | IMPLEMENTED / GENERATED |
-| NFR-01 | `.env.example`, `.gitignore`, `pyproject.toml` | `scripts/validate_evidence.py` | IMPLEMENTED |
-| NFR-02 | `README.md`, `Makefile`, `scripts/generate_evidence.py`, `tests/conftest.py` (forces `OTEL_ENABLED=false`/`RAG_MODE=local`/`SEMANTIC_MODE=fake`/`PII_MODE=regex` before its own `Settings` import, so `pytest` no longer silently depends on the developer's real ambient `.env` — README bug 19, found and verified against a real `.env` matching the documented "Environment" section) | reproducible run; full suite verified passing both from a clean shell and under the developer's real ambient env vars (`OTEL_ENABLED=true SEMANTIC_MODE=real RAG_MODE=chroma PII_MODE=presidio`) | IMPLEMENTED |
-| NFR-03 | `src/context/engineering.py`, PII guardrail | `tests/test_pii.py`, `tests/test_guardrails.py` | IMPLEMENTED |
-| NFR-04 | async graph, `asyncio.to_thread`, MCP async adapter (`asyncio.wait_for` timeout in `src/mcp_client.py`), failure taxonomy, `app/core/semantic.py` (`RealProvider._invoke` uses `method="json_schema"` for Groq's structured output — see README bug 17, verified against the live Groq API; `langchain_groq`'s default method fails deterministically for this project's own rewrite() prompt shape) | `tests/test_semantic_budget.py` (model-provider retry/fallback/budget), `tests/test_mcp_timeout.py` (MCP tool-timeout degrades to `NEEDS_INFO`/`TOOL_TIMEOUT`, both the "unknown transaction" and "known transaction" paths) | IMPLEMENTED |
-| NFR-05 | synthetic data only; PII masking | `tests/test_pii.py`, `scripts/validate_evidence.py` | IMPLEMENTED |
-| NFR-06 | evidence-generating scripts under version control | evidence lock/validator | IMPLEMENTED |
+| AC-01 | `src/graph.py`, `src/agents/workers.py`, `src/tools/rag_tool.py`, `app/core/engines.py` | policy gate requires the exact cited rule to appear in actual RAG hits | Implemented |
+| AC-02 | `app/core/engines.py`, `config/fraud.yaml` | deterministic tests cover fraud factors including 15-minute velocity | Implemented |
+| AC-03 | `config/decision_policy.yaml`, `config/invariants.yaml`, `src/graph.py` | decision/release tests and checkpointed HITL path | Implemented |
+| AC-04 | `src/graph.py`, `src/agents/workers.py` | ambiguous/out-of-scope requests do not reach a fabricated decision | Implemented |
+| AC-05 | `src/context/`, `src/memory/store.py`, checkpointing | cross-session persistence test; durable SQLite is authoritative | Implemented |
+| AC-06 | `app/core/pii.py`, `app/core/security.py`, `src/context/`, `src/guardrails/` | PII/IDOR/injection regression tests | Implemented |
+| AC-07 | MCP logging middleware and wrappers | `logs/tool_calls.jsonl`, `logs/mcp_transcript.jsonl` | Generated on run |
+| AC-08 | `scripts/run_failure_scenarios.py` | each failure cites Phoenix trace identity or an exact tool-log record | Generated on run |
+| AC-09 | `scripts/export_traces.py`, `scripts/build_golden_signals.py`, `scripts/build_dashboard.py`, `scripts/capture_phoenix_dashboard.py` | Phoenix export scoped to evidence window; CSV and golden signals share Phoenix source; screenshot is captured from the Phoenix project page | Generated on run |
+| AC-10 | `src/guardrails/validators.py`, `app/core/db.py` | audit/evidence tests | Implemented / Generated on run |
+| AC-11 | `docs/risk-register.md`, `docs/model-card.md`, `docs/compliance.md`, `docs/output-risk.md`, `docs/controls.md` | every risk mitigation resolves to a `CTRL-*` control | Implemented |
+| AC-12 | `app/eval/`, `tests/` | deterministic scoring plus qualitative DeepEval; skipped qualitative cases remain explicitly counted | Implemented / Generated on run |
+| NFR-01 | `.env.example`, `.gitignore`, settings | repository scan | Implemented |
+| NFR-02 | `README.md`, `scripts/generate_evidence.py` | reproducible run with fresh evidence window | Implemented |
+| NFR-03 | `src/context/engineering.py`, input guardrails | injection/quarantine tests | Implemented |
+| NFR-04 | async graph/MCP calls, provider timeout/retry/fallback | semantic/MCP/loop tests | Implemented |
+| NFR-05 | synthetic data, masking, PII controls | PII tests and strict validator | Implemented |
+| NFR-06 | machine-generated artifacts + strict validator | `scripts/validate_evidence.py --strict` | Implemented |
 
-## Deliberate scope notes
+## Evidence integrity controls
 
-- The mandatory real fallback policy is modeled as **Gemini primary → Groq fallback** because the project owner changed the assessment rule after the original PRD. `docs/deviations.md` records this.
-- Frontend visual polish is not an assessment requirement, but the project implements a banking-style analyst workspace because it improves usability.
-- Cloud/container deployment remains out of scope for this cut.
+1. `traces/phoenix_spans.jsonl` is produced only by querying Phoenix; there is no runtime-log fallback.
+2. Phoenix export is restricted to `EVIDENCE_START_UTC`, preventing historical traces from contaminating the current evidence run.
+3. `reports/dashboard_data.csv` is produced directly from the Phoenix export and carries a source SHA-256.
+4. `reports/dashboard.png` is produced only by the live Phoenix UI capture and is required to be a project-page capture.
+5. Policy citation matching is fail-closed: a configured rule is not considered matched unless its exact source appears in the actual retrieval result set.
+6. Provider/cost metrics are provider-specific and the provider-attempt log is cleared before each evidence run.
+7. Qualitative evaluation reports expose scored and skipped case counts rather than hiding skipped cases from the denominator.
+8. Every failure report contains a resolvable Phoenix span identity or an exact tool-log line.
+9. Every `CTRL-*` mitigation in the risk register resolves to a control row with an implementation and test.

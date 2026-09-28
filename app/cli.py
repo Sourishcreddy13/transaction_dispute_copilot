@@ -69,6 +69,11 @@ def main() -> None:
             )
             if not resolved:
                 raise SystemExit("REVIEW_CONFLICT")
+            import asyncio
+
+            result = asyncio.run(cop.resume_review(args.task, args.actor))
+            print(json.dumps(result, indent=2, default=str))
+            return
         print(json.dumps(dict(cop.db.get_review(args.task)), indent=2, default=str))
         return
 

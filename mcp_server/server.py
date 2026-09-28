@@ -12,6 +12,9 @@ from app.core.data_plane import DataPlane
 from app.core.security import verify_context
 from app.models import AccessContext
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+LOG_DIR = PROJECT_ROOT / "logs"
+
 mcp = FastMCP("transaction-dispute-banking-data-plane")
 data = DataPlane()
 
@@ -36,7 +39,7 @@ def _safe(value: Any):
 
 
 def _log(tool: str, args: dict, result: object, started: float, status: str = "SUCCESS"):
-    Path("logs").mkdir(exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     safe_args = {k: ("<AUTH_CONTEXT>" if k == "access_context" else v) for k, v in args.items()}
     row = {
         "timestamp": time.time(),
@@ -47,9 +50,9 @@ def _log(tool: str, args: dict, result: object, started: float, status: str = "S
         "latency_ms": round((time.perf_counter() - started) * 1000, 2),
         "status": status,
     }
-    with Path("logs/tool_calls.jsonl").open("a", encoding="utf-8") as f:
+    with (LOG_DIR / "tool_calls.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, default=str) + "\n")
-    with Path("logs/mcp_transcript.jsonl").open("a", encoding="utf-8") as f:
+    with (LOG_DIR / "mcp_transcript.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, default=str) + "\n")
 
 
@@ -134,7 +137,7 @@ def get_statements(access_context: str, limit: int = 12) -> list[dict]:
 @mcp.resource("policy://chargeback/manual")
 def chargeback_policy_resource() -> str:
     started = time.perf_counter()
-    root = Path("data/policy_corpus")
+    root = Path(__file__).resolve().parents[1] / "data" / "policy_corpus"
     docs = []
     for p in sorted(root.glob("*.md")):
         docs.append(f"# {p.name}\n{p.read_text(encoding='utf-8')}")

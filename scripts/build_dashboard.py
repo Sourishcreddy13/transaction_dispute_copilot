@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import statistics
 from pathlib import Path
 
-import matplotlib.pyplot as plt
+import yaml
+
+from _phoenix_evidence import application_traces, is_llm_span, model, provider, span_id, span_latency_ms, trace_id, usage
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME = ROOT / "logs" / "runtime_spans.jsonl"
-PROVIDER = ROOT / "logs" / "model_provider.jsonl"
+PHOENIX = ROOT / "traces" / "phoenix_spans.jsonl"
 REPORTS = ROOT / "reports"
 REPORTS.mkdir(parents=True, exist_ok=True)
 
 
-def load(path: Path) -> list[dict]:
+def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
     rows: list[dict] = []
@@ -26,62 +28,108 @@ def load(path: Path) -> list[dict]:
     return rows
 
 
-runtime = load(RUNTIME)
-providers = load(PROVIDER)
-provider_by_run: dict[str, dict] = {}
-for row in providers:
-    run_id = row.get("run_id")
-    if run_id:
-        provider_by_run[run_id] = row
+spans = load_jsonl(PHOENIX)
+if not spans:
+    raise RuntimeError("No Phoenix spans available; run scripts/export_traces.py first.")
 
+application = application_traces(spans)
+if not application:
+    raise RuntimeError("Phoenix export contains no application copilot.run traces.")
+
+provider_config = yaml.safe_load((ROOT / "config/providers.yaml").read_text(encoding="utf-8")) or {}
+pricing = {
+    name: (
+        float(cfg.get("pricing", {}).get("input_usd_per_1m_tokens", 0.0)),
+        float(cfg.get("pricing", {}).get("output_usd_per_1m_tokens", 0.0)),
+    )
+    for name, cfg in provider_config.get("providers", {}).items()
+}
+
+# Phoenix currently exports the LangChain LLM child spans as separate traces in this
+# application. Therefore the dashboard deliberately uses the complete LLM-span set
+# returned for the evidence time window for token/cost accounting, while latency rows
+# retain every span. The metadata records this scope explicitly.
 rows: list[dict] = []
-for row in runtime:
-    run_id = row.get("run_id")
-    usage = row.get("usage") or {}
-    provider = provider_by_run.get(run_id, {})
+for span in spans:
+    llm = is_llm_span(span)
+    u = usage(span) if llm else {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    p = provider(span) if llm else None
+    m = model(span) if llm else None
+    estimated_cost = 0.0
+    if p in pricing:
+        ip, op = pricing[p]
+        estimated_cost = u["input_tokens"] / 1_000_000 * ip + u["output_tokens"] / 1_000_000 * op
     rows.append(
         {
-            "name": row.get("name"),
-            "run_id": run_id,
-            "case_id": row.get("case_id"),
-            "trace_id": row.get("trace_id"),
-            "span_id": row.get("span_id"),
-            "latency_ms": row.get("latency_ms", 0),
-            "provider": provider.get("provider"),
-            "provider_status": provider.get("status"),
-            "input_tokens": usage.get("input_tokens", 0),
-            "output_tokens": usage.get("output_tokens", 0),
-            "total_tokens": usage.get("total_tokens", 0),
-            "estimated_cost_usd": row.get("estimated_cost_usd", 0),
+            "name": span.get("name"),
+            "span_kind": span.get("span_kind") or span.get("attributes.openinference.span.kind"),
+            "run_id": span.get("attributes.run_id") or span.get("run_id"),
+            "case_id": span.get("attributes.case_id") or span.get("case_id"),
+            "trace_id": trace_id(span),
+            "span_id": span_id(span),
+            "start_time": span.get("start_time"),
+            "end_time": span.get("end_time"),
+            "latency_ms": round(span_latency_ms(span), 3),
+            "provider": p,
+            "model": m,
+            "provider_status": (str(span.get("status_code")) if llm else None),
+            "input_tokens": u["input_tokens"],
+            "output_tokens": u["output_tokens"],
+            "total_tokens": u["total_tokens"],
+            "estimated_cost_usd": round(estimated_cost, 10),
         }
     )
 
+rows.sort(key=lambda r: (r["start_time"] or "", r["trace_id"] or "", r["span_id"] or ""))
+
 csv_path = REPORTS / "dashboard_data.csv"
-fields = list(rows[0].keys()) if rows else [
-    "name", "run_id", "case_id", "trace_id", "span_id", "latency_ms",
-    "provider", "provider_status", "input_tokens", "output_tokens",
-    "total_tokens", "estimated_cost_usd",
+fields = [
+    "name", "span_kind", "run_id", "case_id", "trace_id", "span_id",
+    "start_time", "end_time", "latency_ms", "provider", "model", "provider_status",
+    "input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd",
 ]
 with csv_path.open("w", newline="", encoding="utf-8") as handle:
     writer = csv.DictWriter(handle, fieldnames=fields)
     writer.writeheader()
     writer.writerows(rows)
 
-latencies = [float(row["latency_ms"]) for row in rows if row.get("latency_ms") is not None]
+source_sha = hashlib.sha256(PHOENIX.read_bytes()).hexdigest()
+(csv_path.with_suffix(csv_path.suffix + ".meta.json")).write_text(
+    json.dumps(
+        {
+            "generated_by": "scripts/build_dashboard.py",
+            "source": "traces/phoenix_spans.jsonl",
+            "source_sha256": source_sha,
+            "application_trace_count": len(application),
+            "exported_span_count": len(spans),
+            "dashboard_row_count": len(rows),
+            "token_cost_scope": "all Phoenix LLM spans in the evidence time window",
+            "latency_scope": "all Phoenix spans in the evidence time window",
+            "pricing_source": "config/providers.yaml",
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+
+latencies = [float(row["latency_ms"]) for row in rows]
+import matplotlib.pyplot as plt
+
 fig = plt.figure(figsize=(10, 5.5))
 ax = fig.add_subplot(111)
 if latencies:
-    ax.plot(range(1, len(latencies) + 1), latencies, marker="o")
+    ax.plot(range(1, len(latencies) + 1), latencies)
     ax.axhline(statistics.median(latencies), linestyle="--", label="p50")
-ax.set_title("Transaction Dispute Copilot — Latency / Token Evidence")
-ax.set_xlabel("Observed execution span")
+ax.set_title("Transaction Dispute Copilot — Phoenix-derived Latency Summary")
+ax.set_xlabel("Observed Phoenix span")
 ax.set_ylabel("Latency (ms)")
 ax.grid(True, alpha=0.2)
 if latencies:
     ax.legend()
 fig.tight_layout()
-fig.savefig(REPORTS / "dashboard.png", dpi=160)
+fig.savefig(REPORTS / "dashboard_summary.png", dpi=160)
 plt.close(fig)
 
 print(csv_path)
-print(REPORTS / "dashboard.png")
+print(REPORTS / "dashboard_summary.png")

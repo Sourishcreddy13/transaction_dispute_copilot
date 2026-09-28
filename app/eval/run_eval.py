@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from app.core.engines import DecisionEngine, FraudEngine, PolicyEngine
+from app.core.rag import PolicyRAG
 from app.models import Classification, PriorDispute, Transaction
 from app.workflow import Copilot
 
@@ -46,7 +47,7 @@ def evaluate_cases(cop: Copilot, cases: list[dict], suite_name: str) -> list[dic
 
 
 def mutation_results() -> list[dict]:
-    """Causal mutation checks. No LLM or RAG initialization is used."""
+    """Causal mutation checks using the deterministic local policy retriever; no LLM is used."""
     from app.core.data_plane import DataPlane
 
     data = DataPlane()
@@ -55,11 +56,15 @@ def mutation_results() -> list[dict]:
     engine = FraudEngine()
     decision = DecisionEngine()
     policy = PolicyEngine()
+    retriever = PolicyRAG(mode="local")
+    retriever.index_directory("data/policy_corpus")
     outputs: list[dict] = []
 
     high = base.model_copy(update={"amount": Decimal("60000.00")})
     fraud = engine.score(high, [base], p, [])
-    po = policy.evaluate(Classification(intent="unauthorized", confidence=1, source="llm"), high, fraud)
+    classification = Classification(intent="unauthorized", confidence=1, source="llm")
+    rag_hits = retriever.search("unauthorized transaction provisional credit settled", k=3)
+    po = policy.evaluate(classification, high, fraud, rag_sources=rag_hits)
     rec = decision.decide("M-HIGH", Classification(intent="unauthorized", confidence=1, source="llm"), fraud, po, txn=high)
     outputs.append({"id": "M-HIGH-VALUE", "assertion": "HIGH_VALUE in escalation_reasons", "pass": "HIGH_VALUE" in rec.escalation_reasons})
 

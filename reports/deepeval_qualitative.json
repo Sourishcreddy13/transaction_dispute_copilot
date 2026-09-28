@@ -3,15 +3,15 @@
     "id": "E1",
     "Answer Relevancy": {
       "score": 1.0,
-      "reason": "The score is 1.00 because the response fully addressed the user's statement without any irrelevant content."
+      "reason": "The score is 1.00 because the response directly addressed the input with no irrelevant statements, demonstrating perfect relevance."
     },
     "Faithfulness": {
       "score": 1.0,
-      "reason": "The score is 1.00 because there are no contradictions, indicating perfect faithfulness."
+      "reason": "The score is 1.00 because there are no contradictions, indicating perfect alignment with the retrieval context."
     },
     "Hallucination": {
       "score": 1.0,
-      "reason": "The score is 1.00 because the actual output fully aligns with the provided contexts and contains no contradictions."
+      "reason": "The score is 1.00 because the actual output aligns with the contexts and there are no contradictions."
     }
   },
   {
@@ -22,15 +22,15 @@
     "id": "E3",
     "Answer Relevancy": {
       "score": 1.0,
-      "reason": "The score is 1.00 because the response fully addressed the issue without any irrelevant content."
+      "reason": "The score is 1.00 because the reply directly addressed the double\u2011charge issue with no irrelevant content, so it couldn\u2019t be any higher\u2014great job staying on point!"
     },
     "Faithfulness": {
       "score": 1.0,
-      "reason": "The score is 1.00 because there are no contradictions to indicate any misalignment between the actual output and the retrieval context. Great job!"
+      "reason": "The score is 1.00 because there are no contradictions, indicating perfect alignment with the retrieval context."
     },
     "Hallucination": {
-      "score": 0.5,
-      "reason": "The score is 0.50 because the output partially aligns with the merchant dispute policy (chargeback routing) but contradicts the unauthorized transaction policy (provisional credit), yielding a moderate overall alignment."
+      "score": 1.0,
+      "reason": "The score is 1.00 because the actual output aligns with the contexts and there are no contradictions."
     }
   }
 ]

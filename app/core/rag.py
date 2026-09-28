@@ -12,7 +12,9 @@ class PolicyRAG:
     """Synthetic chargeback-policy retrieval with Chroma + local deterministic fallback."""
 
     def __init__(self, persist_dir="./runtime/chroma", embedding_model="sentence-transformers/all-MiniLM-L6-v2", mode="chroma"):
-        self.persist_dir = Path(persist_dir)
+        project_root = Path(__file__).resolve().parents[2]
+        self.persist_dir = (project_root / persist_dir).resolve() if not Path(persist_dir).is_absolute() else Path(persist_dir)
+        self.project_root = project_root
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.mode = mode
         self.embedding_model_name = embedding_model
@@ -20,7 +22,7 @@ class PolicyRAG:
         self.collection = None
         self.embedder = None
         self.docs: list[tuple[str, str]] = []
-        cfg_path = Path("config/rag.yaml")
+        cfg_path = self.project_root / "config" / "rag.yaml"
         self.cfg = yaml.safe_load(cfg_path.read_text()) if cfg_path.exists() else {"top_k": 3, "distance_threshold": 0.80}
         self.manifest_hash: str | None = None
         if mode == "chroma":
@@ -40,7 +42,7 @@ class PolicyRAG:
             self._load_local()
 
     def _load_local(self):
-        corpus = Path("data/policy_corpus")
+        corpus = self.project_root / "data" / "policy_corpus"
         self.docs = [(str(p), p.read_text(encoding="utf-8")) for p in sorted(corpus.glob("*.md"))]
         self.manifest_hash = hashlib.sha256(
             "".join(hashlib.sha256(text.encode()).hexdigest() for _, text in self.docs).encode()
@@ -50,7 +52,10 @@ class PolicyRAG:
         return self.embedder.encode(texts, normalize_embeddings=True).tolist()
 
     def index_directory(self, directory="data/policy_corpus"):
-        docs = [(str(p), p.read_text(encoding="utf-8")) for p in sorted(Path(directory).glob("*.md"))]
+        directory_path = Path(directory)
+        if not directory_path.is_absolute():
+            directory_path = self.project_root / directory_path
+        docs = [(str(p), p.read_text(encoding="utf-8")) for p in sorted(directory_path.glob("*.md"))]
         self.manifest_hash = hashlib.sha256(
             "".join(hashlib.sha256(text.encode()).hexdigest() for _, text in docs).encode()
         ).hexdigest()
@@ -67,7 +72,9 @@ class PolicyRAG:
             )
         return len(docs)
 
-    def search(self, query, k=None):
+    def search(self, query, k=None, run_id=None):
+        # run_id is accepted so the agentic tool can propagate provenance uniformly.
+        _ = run_id
         k = k or int(self.cfg.get("top_k", 3))
         threshold = float(self.cfg.get("distance_threshold", 0.80))
         if self.mode == "chroma":

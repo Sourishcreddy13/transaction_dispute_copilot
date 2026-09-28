@@ -122,10 +122,10 @@ class CopilotGraph:
                 principal = self.s.principal(state["actor_id"], state["role"])
                 self.s.authorize(principal, state["case_id"])
                 return {"authorized": True}
-            except Exception:
+            except PermissionError as exc:
                 return {
                     "authorized": False,
-                    "errors": ["AUTHZ_CASE_DENIED"],
+                    "errors": [str(exc) or "AUTHZ_CASE_DENIED"],
                     "case_state": CaseState.NEEDS_INFO.value,
                     "route": "finalize",
                 }
@@ -342,7 +342,7 @@ class CopilotGraph:
             try:
                 # Consume the required MCP resource through the adapter. Retrieved resource text is treated as data only.
                 resource_text = await self.s.mcp.resource("policy://chargeback/manual")
-                hits = await asyncio.to_thread(self.s.rag.search, query, 3, state["run_id"])
+                hits = await asyncio.to_thread(self.s.rules_agent.retrieve, query, state["run_id"])
             except Exception:
                 self._transition(state["case_id"], CaseState.NEEDS_INFO.value, "NONE")
                 return {
@@ -360,8 +360,17 @@ class CopilotGraph:
                 po = self.s.policy.evaluate(
                     state["classification"], self.s.txn_model(state), state["fraud"], True, hits
                 )
-                self._transition(state["case_id"], CaseState.POLICY_EVALUATED.value, "NONE")
-                out.update({"policy": po, "case_state": CaseState.POLICY_EVALUATED.value})
+                if not po.matched:
+                    self._transition(state["case_id"], CaseState.NEEDS_INFO.value, "NONE")
+                    out.update({
+                        "policy": po,
+                        "case_state": CaseState.NEEDS_INFO.value,
+                        "errors": ["POLICY_MATCH_NOT_FOUND"],
+                        "route": "finalize",
+                    })
+                else:
+                    self._transition(state["case_id"], CaseState.POLICY_EVALUATED.value, "NONE")
+                    out.update({"policy": po, "case_state": CaseState.POLICY_EVALUATED.value})
             return out
 
     async def decision_engine(self, state: CopilotState):
@@ -456,48 +465,80 @@ class CopilotGraph:
         elif case_state != CaseState.NEEDS_INFO.value:
             review_state = "NONE"
 
-        # Audit commit is the release prerequisite. Only after it commits do we mark the result releasable.
+        release_payload = {
+            "case_state": case_state,
+            "review_task": {"task_id": state.get("review_task_id")} if state.get("review_task_id") else None,
+            "recommendation": state.get("recommendation").model_dump(mode="json") if state.get("recommendation") else None,
+            "injection_flag": state.get("injection_flag", False),
+        }
+        try:
+            validate_release_invariants(release_payload)
+        except Exception as exc:
+            self.s.db.set_state(state["case_id"], CaseState.FAILED.value, review_state, "FAILED")
+            self.s.db.audit(
+                state["case_id"],
+                "release_gate_failure",
+                {
+                    "run_id": state["run_id"],
+                    "actor_id": state["actor_id"],
+                    "error": str(exc),
+                },
+            )
+            return {
+                "case_state": CaseState.FAILED.value,
+                "audit_state": "FAILED",
+                "review_state": review_state,
+                "customer_view": "The case could not be released automatically. It has been routed for investigation.",
+            }
+
+        # Validate first, then commit the audit event, then mark the case releasable.
+        # A failed release gate can therefore never be observed as RELEASABLE.
+        disposition_row = self.s.db.get_review(state["review_task_id"]) if state.get("review_task_id") else None
+        audit_actor = (
+            disposition_row["reviewer_id"]
+            if disposition_row and disposition_row["reviewer_id"]
+            else state["actor_id"]
+        )
         event_hash = self.s.db.audit(
             state["case_id"],
             "finalize",
             {
                 "run_id": state["run_id"],
-                "actor_id": state["actor_id"],
+                "actor_id": audit_actor,
                 "case_state": case_state,
                 "snapshot_id": state.get("snapshot_id"),
                 "release_candidate": True,
             },
         )
-        self.s.db.set_state(
-            state["case_id"],
-            case_state,
-            review_state,
-            "RELEASABLE",
-        )
+        self.s.db.set_state(state["case_id"], case_state, review_state, "RELEASABLE")
 
         if state.get("recommendation") and case_state == CaseState.RESOLVED.value:
             rec = state["recommendation"]
             customer_id = current["customer_id"]
-            self.s.memory.write(customer_id, "last_dispute_action", rec.primary_action.value, self.s.memory.system_verified_level, "deterministic_decision")
-            self.s.memory.write(customer_id, "last_dispute_type", state["classification"].intent, self.s.memory.system_verified_level, "semantic_classification_plus_policy")
-            # Mirror the same TieredMemory-accepted facts into LangMem's semantic index.
-            # Best-effort only: TieredMemory.write() above is already the durable,
-            # decision-critical record; this just makes it semantically searchable too.
+            self.s.memory.write(
+                customer_id,
+                "last_dispute_action",
+                rec.primary_action.value,
+                self.s.memory.system_verified_level,
+                "deterministic_decision",
+            )
+            self.s.memory.write(
+                customer_id,
+                "last_dispute_type",
+                state["classification"].intent,
+                self.s.memory.system_verified_level,
+                "semantic_classification_plus_policy",
+            )
             await self.s.langmem.remember(customer_id, "last_dispute_action", rec.primary_action.value)
             await self.s.langmem.remember(customer_id, "last_dispute_type", state["classification"].intent)
 
-        try:
-            validate_release_invariants({
-                "case_state": case_state,
-                "review_task": {"task_id": state.get("review_task_id")} if state.get("review_task_id") else None,
-                "recommendation": state.get("recommendation").model_dump(mode="json") if state.get("recommendation") else None,
-            })
-        except Exception as exc:
-            self.s.db.set_state(state["case_id"], CaseState.FAILED.value, review_state, "FAILED")
-            self.s.db.audit(state["case_id"], "release_gate_failure", {"run_id": state["run_id"], "actor_id": state["actor_id"], "error": str(exc)})
-            return {"case_state": CaseState.FAILED.value, "audit_state": "FAILED", "review_state": review_state, "customer_view": "The case could not be released automatically. It has been routed for investigation."}
-
-        return {"case_state": case_state, "audit_state": "RELEASABLE", "review_state": review_state, "customer_view": customer_view, "audit_event_hash": event_hash}
+        return {
+            "case_state": case_state,
+            "audit_state": "RELEASABLE",
+            "review_state": review_state,
+            "customer_view": customer_view,
+            "audit_event_hash": event_hash,
+        }
 
     async def ainvoke(self, initial: CopilotState, thread_id: str):
         return await self.graph.ainvoke(

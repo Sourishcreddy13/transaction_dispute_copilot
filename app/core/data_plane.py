@@ -8,7 +8,9 @@ from app.models import Transaction, CustomerProfile, PriorDispute, BankAccount, 
 class DataPlane:
     """Synthetic banking data plane. No real banking integrations are used in this cut."""
     def __init__(self, root="data/synthetic"):
-        root = Path(root)
+        project_root = Path(__file__).resolve().parents[2]
+        root_path = Path(root)
+        root = root_path if root_path.is_absolute() else project_root / root_path
         self.txns = {}
         self.profiles = {}
         self.disputes = []

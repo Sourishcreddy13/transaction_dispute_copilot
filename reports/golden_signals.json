@@ -1,50 +1,88 @@
 {
   "source": "Phoenix span export + machine-generated provider attempts + deterministic evaluation",
-  "runs": 20,
-  "span_count": 1000,
+  "source_artifact": "traces/phoenix_spans.jsonl",
+  "source_sha256": "59296102eaaddf38ca54178c74c0c8c86ab6806e2c6cc6f868b5e08be271ab34",
+  "generated_at": "2026-09-28T10:55:47.277425+00:00",
+  "telemetry_scope": {
+    "latency": "application traces containing copilot.run",
+    "tokens_and_cost": "all LLM spans in the evidence time window, including evaluation/DeepEval judge calls because Phoenix does not currently correlate those child LLM spans to copilot.run",
+    "provider_fallback": "machine-generated provider attempts from the fresh evidence run only"
+  },
+  "runs": 9,
+  "span_count": 383,
+  "llm_span_count": 29,
   "latency_ms": {
     "overall": {
-      "p50": 32.0,
-      "p95": 5990.0,
-      "p99": 510548.0
+      "p50": 13.0,
+      "p95": 5001.0,
+      "p99": 60084.0
     },
     "thinking": {
-      "p50": 1170.0,
-      "p95": 11153.0,
-      "p99": 602079.0
+      "p50": null,
+      "p95": null,
+      "p99": null
     },
     "acting": {
       "p50": 5.0,
-      "p95": 5949.0,
-      "p99": 510548.0
+      "p95": 4210.0,
+      "p99": 60084.0
     },
     "tool": {
-      "p50": 375.0,
-      "p95": 596.0,
-      "p99": 640.0
+      "p50": 540.0,
+      "p95": 600.0,
+      "p99": 750.0
     },
     "end_to_end": {
-      "p50": 6611.0,
-      "p95": 606695.0,
-      "p99": 606695.0
+      "p50": 5518.0,
+      "p95": 64097.0,
+      "p99": 64097.0
     }
   },
   "tokens": {
-    "input": 21561,
-    "output": 11200,
-    "total": 32761
-  },
-  "cost": {
-    "estimated_usd": 1.991e-05,
-    "pricing_basis": {
-      "input_usd_per_1k_tokens": 3e-07,
-      "output_usd_per_1k_tokens": 1.2e-06
+    "input": 11504,
+    "output": 5660,
+    "total": 17164,
+    "by_provider": {
+      "groq": {
+        "input": 9940,
+        "output": 5207,
+        "total": 15147,
+        "calls": 20
+      },
+      "gemini": {
+        "input": 1564,
+        "output": 453,
+        "total": 2017,
+        "calls": 9
+      }
     }
   },
+  "cost": {
+    "estimated_usd": 0.0056857,
+    "by_provider": {
+      "gemini": 0.0010705,
+      "groq": 0.0046152
+    },
+    "pricing_basis": {
+      "gemini": {
+        "input_usd_per_1m_tokens": 0.25,
+        "output_usd_per_1m_tokens": 1.5
+      },
+      "groq": {
+        "input_usd_per_1m_tokens": 0.15,
+        "output_usd_per_1m_tokens": 0.6
+      }
+    },
+    "basis_date": "2026-09-28"
+  },
   "provider": {
-    "attempt_count": 66,
-    "fallback_activations": 7,
-    "fallback_rate": 0.10606060606060606
+    "primary": "gemini",
+    "fallback": "groq",
+    "attempt_count": 12,
+    "run_count": 10,
+    "fallback_activations": 2,
+    "fallback_successes": 2,
+    "fallback_rate": 0.2
   },
   "accuracy": {
     "action": 1.0,
@@ -52,13 +90,17 @@
     "intent": 1.0
   },
   "qualitative_eval": {
-    "Answer Relevancy": 1.0,
-    "Faithfulness": 1.0,
-    "Hallucination": 0.75
+    "scored_cases": 2,
+    "skipped_cases": 1,
+    "metrics": {
+      "Answer Relevancy": 1.0,
+      "Faithfulness": 1.0,
+      "Hallucination": 1.0
+    }
   },
   "quality_rates": {
     "faithfulness_pass_rate": 1.0,
     "answer_relevancy_pass_rate": 1.0,
-    "hallucination_rate": 0.25
+    "hallucination_rate": 0.0
   }
 }

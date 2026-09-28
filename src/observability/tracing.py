@@ -19,7 +19,8 @@ class TraceManager:
     ) -> None:
         self.enabled = enabled
         self.endpoint = endpoint
-        self.log_path = Path(log_path)
+        log_candidate = Path(log_path)
+        self.log_path = (Path(__file__).resolve().parents[2] / log_candidate) if not log_candidate.is_absolute() else log_candidate
         self.tracer = None
         self.provider = None
         self._setup()

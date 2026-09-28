@@ -9,7 +9,7 @@
       {
         "suite": "public",
         "id": "E1",
-        "case_id": "CASE-F921EE8333",
+        "case_id": "CASE-2BD58765AA",
         "expected_intent": "unauthorized",
         "actual_intent": "unauthorized",
         "expected_action": "provisional_credit",
@@ -24,37 +24,26 @@
           {
             "provider": "gemini",
             "model": "gemini-3.1-flash-lite",
-            "status": "FAILED",
-            "error": "GEMINI_REQUEST_FAILED: provider call did not complete within 30.0s",
-            "latency_ms": 30393.21,
+            "status": "SUCCESS",
+            "latency_ms": 2385.59,
             "attempt": 1,
             "provider_attempt": 1,
             "operation": "classify",
-            "run_id": "RUN-d0cc5b04b67e"
-          },
-          {
-            "provider": "groq",
-            "model": "openai/gpt-oss-120b",
-            "status": "SUCCESS",
-            "latency_ms": 1530.84,
-            "attempt": 2,
-            "provider_attempt": 1,
-            "operation": "classify",
-            "run_id": "RUN-d0cc5b04b67e",
+            "run_id": "RUN-170acd3a8a24",
             "usage": {
-              "input_tokens": 469,
-              "output_tokens": 241,
-              "total_tokens": 710
+              "input_tokens": 193,
+              "output_tokens": 55,
+              "total_tokens": 248
             }
           }
         ],
-        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "policy_citation": "/Users/sourishcreddy/Downloads/transaction_dispute_copilot_fixed/data/policy_corpus/unauthorized.md",
         "customer_view": "Your dispute is currently processed with next action: provisional credit."
       },
       {
         "suite": "public",
         "id": "E2",
-        "case_id": "CASE-24904A4658",
+        "case_id": "CASE-A9025ED8B6",
         "expected_intent": "unauthorized",
         "actual_intent": "unauthorized",
         "expected_action": "provisional_credit",
@@ -70,25 +59,25 @@
             "provider": "gemini",
             "model": "gemini-3.1-flash-lite",
             "status": "SUCCESS",
-            "latency_ms": 3045.84,
+            "latency_ms": 1536.34,
             "attempt": 1,
             "provider_attempt": 1,
             "operation": "classify",
-            "run_id": "RUN-0a89e7f6fd7c",
+            "run_id": "RUN-4522e9d23635",
             "usage": {
-              "input_tokens": 151,
-              "output_tokens": 57,
-              "total_tokens": 208
+              "input_tokens": 195,
+              "output_tokens": 55,
+              "total_tokens": 250
             }
           }
         ],
-        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "policy_citation": "/Users/sourishcreddy/Downloads/transaction_dispute_copilot_fixed/data/policy_corpus/unauthorized.md",
         "customer_view": ""
       },
       {
         "suite": "public",
         "id": "E3",
-        "case_id": "CASE-4691CC3AB0",
+        "case_id": "CASE-6555474CA4",
         "expected_intent": "merchant_dispute",
         "actual_intent": "merchant_dispute",
         "expected_action": "chargeback",
@@ -104,11 +93,11 @@
             "provider": "gemini",
             "model": "gemini-3.1-flash-lite",
             "status": "SUCCESS",
-            "latency_ms": 7666.55,
+            "latency_ms": 1507.06,
             "attempt": 1,
             "provider_attempt": 1,
             "operation": "classify",
-            "run_id": "RUN-d18053ff7b72",
+            "run_id": "RUN-be26024d1490",
             "usage": {
               "input_tokens": 195,
               "output_tokens": 60,
@@ -116,13 +105,13 @@
             }
           }
         ],
-        "policy_citation": "data/policy_corpus/merchant_dispute.md",
+        "policy_citation": "/Users/sourishcreddy/Downloads/transaction_dispute_copilot_fixed/data/policy_corpus/merchant_dispute.md",
         "customer_view": "Your dispute is currently processed with next action: chargeback."
       },
       {
         "suite": "hidden",
         "id": "H1",
-        "case_id": "CASE-057FB3AD43",
+        "case_id": "CASE-5ACD45C1ED",
         "expected_intent": "unauthorized",
         "actual_intent": "unauthorized",
         "expected_action": "provisional_credit",
@@ -138,11 +127,11 @@
             "provider": "gemini",
             "model": "gemini-3.1-flash-lite",
             "status": "SUCCESS",
-            "latency_ms": 3318.82,
+            "latency_ms": 1497.24,
             "attempt": 1,
             "provider_attempt": 1,
             "operation": "classify",
-            "run_id": "RUN-de7bc21915ab",
+            "run_id": "RUN-651d3277986e",
             "usage": {
               "input_tokens": 199,
               "output_tokens": 58,
@@ -150,13 +139,13 @@
             }
           }
         ],
-        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "policy_citation": "/Users/sourishcreddy/Downloads/transaction_dispute_copilot_fixed/data/policy_corpus/unauthorized.md",
         "customer_view": "Your dispute is currently processed with next action: provisional credit."
       },
       {
         "suite": "hidden",
         "id": "H2",
-        "case_id": "CASE-FF028FA62E",
+        "case_id": "CASE-EA5D153515",
         "expected_intent": "unauthorized",
         "actual_intent": "unauthorized",
         "expected_action": "provisional_credit",
@@ -172,25 +161,25 @@
             "provider": "gemini",
             "model": "gemini-3.1-flash-lite",
             "status": "SUCCESS",
-            "latency_ms": 2526.12,
+            "latency_ms": 1465.01,
             "attempt": 1,
             "provider_attempt": 1,
             "operation": "classify",
-            "run_id": "RUN-4c3f12fbdb4e",
+            "run_id": "RUN-75bd540783a8",
             "usage": {
-              "input_tokens": 157,
-              "output_tokens": 57,
-              "total_tokens": 214
+              "input_tokens": 201,
+              "output_tokens": 55,
+              "total_tokens": 256
             }
           }
         ],
-        "policy_citation": "data/policy_corpus/unauthorized.md",
+        "policy_citation": "/Users/sourishcreddy/Downloads/transaction_dispute_copilot_fixed/data/policy_corpus/unauthorized.md",
         "customer_view": ""
       },
       {
         "suite": "hidden",
         "id": "H3",
-        "case_id": "CASE-8CD3417935",
+        "case_id": "CASE-0C896673DE",
         "expected_intent": "merchant_dispute",
         "actual_intent": "merchant_dispute",
         "expected_action": "chargeback",
@@ -206,11 +195,11 @@
             "provider": "gemini",
             "model": "gemini-3.1-flash-lite",
             "status": "SUCCESS",
-            "latency_ms": 3743.02,
+            "latency_ms": 1881.14,
             "attempt": 1,
             "provider_attempt": 1,
             "operation": "classify",
-            "run_id": "RUN-8299ac8e901d",
+            "run_id": "RUN-68d0e357a091",
             "usage": {
               "input_tokens": 193,
               "output_tokens": 60,
@@ -218,7 +207,7 @@
             }
           }
         ],
-        "policy_citation": "data/policy_corpus/merchant_dispute.md",
+        "policy_citation": "/Users/sourishcreddy/Downloads/transaction_dispute_copilot_fixed/data/policy_corpus/merchant_dispute.md",
         "customer_view": "Your dispute is currently processed with next action: chargeback."
       }
     ]

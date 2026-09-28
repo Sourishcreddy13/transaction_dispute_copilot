@@ -80,7 +80,7 @@ class BankingMCPClient:
     """MCP client consumed through langchain-mcp-adapters over stdio."""
 
     def __init__(self, project_root: str | None = None, call_timeout: float | None = None):
-        self.project_root = Path(project_root or os.getcwd()).resolve()
+        self.project_root = Path(project_root).resolve() if project_root else Path(__file__).resolve().parents[1]
         self.client = None
         self.tools: dict[str, Any] = {}
         self.initialized = False
@@ -161,7 +161,15 @@ class BankingMCPClient:
         except Exception:
             tracer = None
 
-        resources = await self.client.get_resources(server_name="banking", uris=[uri])
+        try:
+            resources = await asyncio.wait_for(
+                self.client.get_resources(server_name="banking", uris=[uri]),
+                timeout=self.call_timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            raise MCPToolTimeout(
+                f"MCP resource '{uri}' timed out after {self.call_timeout}s"
+            ) from exc
         if not resources:
             raise MCPClientError(f"missing MCP resource: {uri}")
         resource = resources[0]

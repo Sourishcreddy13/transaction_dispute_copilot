@@ -222,6 +222,7 @@ class SemanticGateway:
         self.rag_rewrite_budget = rag_rewrite_budget
         self.provider_max_attempts = provider_max_attempts
         self._run_state: dict[str, dict[str, Any]] = {}
+        self._run_telemetry: dict[str, dict[str, Any]] = {}
         if mode == "fake":
             self.primary = FakeProvider()
             self.fallback = FakeProvider()
@@ -283,8 +284,15 @@ class SemanticGateway:
                         "usage": getattr(provider, "last_usage", {}),
                     }
                     attempts.append(attempt)
-                    self.last_attempts = attempts
-                    self.last_usage = getattr(provider, "last_usage", {})
+                    telemetry = {
+                        "attempts": list(attempts),
+                        "usage": dict(getattr(provider, "last_usage", {})),
+                        "provider": provider.name,
+                        "model": provider.model_id,
+                    }
+                    self._run_telemetry[run_id or "local"] = telemetry
+                    self.last_attempts = list(attempts)
+                    self.last_usage = dict(telemetry["usage"])
                     self.last_provider = provider.name
                     self._write_attempt_log(attempt)
                     state["affinity"] = provider.name
@@ -308,8 +316,19 @@ class SemanticGateway:
             if state["provider_calls"] >= self.max_provider_calls:
                 break
 
-        self.last_attempts = attempts
+        self.last_attempts = list(attempts)
+        self._run_telemetry[run_id or "local"] = {
+            "attempts": list(attempts),
+            "usage": {},
+            "provider": "unknown",
+            "model": self.primary.model_id,
+        }
         raise ProviderError("PROV_ALL_FAILED", attempts=attempts)
+
+    def telemetry_for(self, run_id: str | None) -> dict[str, Any]:
+        return dict(self._run_telemetry.get(run_id or "local", {
+            "attempts": [], "usage": {}, "provider": "unknown", "model": self.primary.model_id,
+        }))
 
     def classify(self, text: str, context: list[str] | None = None, run_id: str | None = None):
         return self._run("classify", text, context, run_id)

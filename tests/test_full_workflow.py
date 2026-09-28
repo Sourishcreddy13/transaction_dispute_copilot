@@ -6,7 +6,10 @@ def test_human_review_flow(test_copilot):
     task=out.review_task
     assert test_copilot.db.claim_review(task.task_id,'reviewer:R-001',task.version)
     assert test_copilot.db.resolve_review(task.task_id,'reviewer:R-001',task.version+1,cid,'investigate','HIGH_RISK','manual review')
+    resumed = __import__('asyncio').run(test_copilot.resume_review(task.task_id, 'reviewer:R-001'))
+    assert resumed['case_state'] == 'RESOLVED'
     assert test_copilot.db.get_case(cid)['state']=='RESOLVED'
+    assert any('reviewer:R-001' in e['payload_json'] for e in test_copilot.db.get_audit(cid))
 
 def test_idempotent_rerun(test_copilot):
     cid=test_copilot.db.create_case('C-1001','analyst:A-001','T-1007')

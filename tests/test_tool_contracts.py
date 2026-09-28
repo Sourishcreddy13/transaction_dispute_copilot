@@ -31,3 +31,21 @@ def test_unknown_transaction_returns_non_enumerating_error(monkeypatch):
         assert str(exc) == "TXN_NOT_FOUND"
     else:
         raise AssertionError("unknown transaction must use the non-enumerating error")
+
+
+def test_all_mcp_tools_have_access_context_contract():
+    import inspect
+    from mcp_server import server
+
+    names = [
+        "get_transaction",
+        "get_recent_transactions",
+        "get_customer_profile",
+        "get_prior_disputes",
+        "get_account_summary",
+        "get_statements",
+    ]
+    for name in names:
+        sig = inspect.signature(getattr(server, name))
+        assert "access_context" in sig.parameters
+

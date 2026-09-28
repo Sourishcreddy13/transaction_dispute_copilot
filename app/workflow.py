@@ -65,7 +65,7 @@ class Services:
         )
         self.telemetry = TraceManager(settings.otel_enabled, settings.phoenix_endpoint)
         self.memory = TieredMemory(settings.memory_path)
-        self.langmem = LangMemBridge()
+        self.langmem = LangMemBridge(self.memory)
         self.classifier = DisputeClassificationAgent(self.semantic)
         self.fraud_agent = FraudScoringAgent(self.fraud)
         self.rules_agent = ChargebackRulesAgent(self.rag, self.policy)
@@ -240,36 +240,22 @@ class Copilot:
                 with self.s.telemetry.span("copilot.run", case_id=case_id, run_id=run_id) as span:
                     result = await graph.ainvoke(initial, case_id)
                     if span is not None:
-                        usage = self.s.semantic.last_usage or {}
-                        for key, value in usage.items():
-                            span.set_attribute(f"llm.{key}", int(value) if isinstance(value, int) else str(value))
-                        span.set_attribute("llm.provider", self.s.semantic.last_provider)
+                        telemetry = self.s.semantic.telemetry_for(run_id)
+                        for key, value in (telemetry.get("usage") or {}).items():
+                            span.set_attribute(
+                                f"llm.{key}",
+                                int(value) if isinstance(value, int) else str(value),
+                            )
+                        span.set_attribute("llm.provider", telemetry.get("provider", "unknown"))
         except ImportError as exc:
-            # langgraph-checkpoint-sqlite is a required dependency (pinned in
-            # pyproject.toml) precisely because AC-05 (cross-session context
-            # recall) and the human_review interrupt()/resume() flow depend on a
-            # real checkpointer. Running without one is a correctness regression,
-            # not a convenience fallback -- so this is surfaced loudly (log +
-            # audit record) instead of silently degrading, and the response
-            # carries a warning the caller/operator can act on.
-            logger.error(
-                "AsyncSqliteSaver unavailable (%s) -- running case %s WITHOUT a checkpointer; "
-                "cross-session memory recall and human-review resume will not persist across "
-                "process restarts for this run.",
-                exc,
-                case_id,
-            )
             self.db.audit(
                 case_id,
                 "checkpointer_unavailable",
                 {"run_id": run_id, "actor_id": actor, "error": str(exc)},
             )
-            graph = CopilotGraph(self.s, None)
-            with self.s.telemetry.span("copilot.run", case_id=case_id, run_id=run_id):
-                result = await graph.ainvoke(initial, case_id)
-            result = dict(result)
-            result.setdefault("warnings", [])
-            result["warnings"] = list(result["warnings"]) + ["CHECKPOINTER_UNAVAILABLE"]
+            raise RuntimeError(
+                "REQUIRED_CHECKPOINTER_UNAVAILABLE: install langgraph-checkpoint-sqlite"
+            ) from exc
         except Exception as exc:
             self.db.audit(case_id, "workflow_failure", {"run_id": run_id, "actor_id": actor, "error": str(exc)})
             try:
@@ -289,16 +275,17 @@ class Copilot:
         if result.get("disposition"):
             final_disposition = FinalDisposition.model_validate(result["disposition"])
 
+        semantic_telemetry = self.s.semantic.telemetry_for(run_id)
         successful_provider = next(
-            (a for a in reversed(self.s.semantic.last_attempts) if a.get("status") == "SUCCESS"),
+            (a for a in reversed(semantic_telemetry.get("attempts", [])) if a.get("status") == "SUCCESS"),
             None,
         )
         provenance = DecisionProvenance(
             run_id=run_id,
             case_id=case_id,
-            provider_attempts=self.s.semantic.last_attempts,
-            model_id=(successful_provider or {}).get("model", self.settings.gemini_model),
-            provider_used=(successful_provider or {}).get("provider", self.s.semantic.last_provider),
+            provider_attempts=semantic_telemetry.get("attempts", []),
+            model_id=(successful_provider or {}).get("model", semantic_telemetry.get("model", self.settings.gemini_model)),
+            provider_used=(successful_provider or {}).get("provider", semantic_telemetry.get("provider", "unknown")),
             policy_version=self.s.policy.cfg["version"],
             config_hash=hashlib.sha256(Path("config/decision_policy.yaml").read_bytes()).hexdigest(),
             inputs_snapshot_id=result.get("snapshot_id") or "not-created",
@@ -346,10 +333,12 @@ class Copilot:
         self.db.finish_operation(idem, response.model_dump(mode="json"))
         return response
 
-    async def resume_review(self, task_id):
+    async def resume_review(self, task_id: str, reviewer_id: str):
         row = self.db.get_review(task_id)
         if not row:
             raise LookupError("REVIEW_NOT_FOUND")
+        if row["status"] != "RESOLVED" or row["claimed_by"] != reviewer_id:
+            raise PermissionError("REVIEW_RESUME_NOT_AUTHORIZED")
         case = self.db.get_case(row["case_id"])
         from langgraph.types import Command
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver

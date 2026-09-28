@@ -2,95 +2,113 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 from app.core.semantic import ProviderError, SemanticGateway
-from app.core.security import mint_context, verify_context
+from app.core.security import mint_context
 from app.models import Principal, Role
+from src.observability.tracing import configure_phoenix
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "reports" / "failure-scenarios.json"
 TOOL_LOG = ROOT / "logs" / "tool_calls.jsonl"
-PROVIDER_LOG = ROOT / "logs" / "model_provider.jsonl"
 
 
-def provider_log_refs(run_id: str) -> list[dict]:
-    """Every citation in docs/failure-analysis.md must resolve to a committed
-    artifact (Citation-Resolves Rule). SemanticGateway._write_attempt_log
-    appends one record per provider attempt to logs/model_provider.jsonl,
-    tagged with the caller-supplied run_id -- so a failure scenario that
-    passes run_id="FAIL-FALLBACK-001" into gateway.classify(...) has a real,
-    line-addressable record here. Return every matching line (1-indexed) so
-    the doc can cite something a reader can `sed -n '<line>p'` and verify,
-    the same way the tool-log citations already do for Failures 2/3."""
-    if not PROVIDER_LOG.exists():
-        return []
-    refs: list[dict] = []
-    for idx, line in enumerate(PROVIDER_LOG.read_text(encoding="utf-8").splitlines(), start=1):
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if row.get("run_id") == run_id:
-            refs.append(
-                {
-                    "artifact": "logs/model_provider.jsonl",
-                    "line": idx,
-                    "provider": row.get("provider"),
-                    "status": row.get("status"),
-                    "latency_ms": row.get("latency_ms"),
-                }
-            )
-    return refs
-
-
-def last_tool_log_ref() -> dict | None:
+def tool_log_ref(transaction_id: str) -> dict | None:
     if not TOOL_LOG.exists():
         return None
-    lines = TOOL_LOG.read_text(encoding="utf-8").splitlines()
-    for idx in range(len(lines) - 1, -1, -1):
+    rows = TOOL_LOG.read_text(encoding="utf-8").splitlines()
+    for index in range(len(rows) - 1, -1, -1):
         try:
-            row = json.loads(lines[idx])
+            row = json.loads(rows[index])
         except json.JSONDecodeError:
             continue
-        return {
-            "artifact": "logs/tool_calls.jsonl",
-            "line": idx + 1,
-            "tool_name": row.get("tool_name"),
-            "timestamp": row.get("timestamp"),
-            "status": row.get("status"),
-        }
+        args = row.get("args") or {}
+        result = row.get("result") or {}
+        if (
+            row.get("tool_name") == "get_transaction"
+            and args.get("transaction_id") == transaction_id
+            and row.get("status") == "ERROR"
+        ):
+            return {
+                "artifact": "logs/tool_calls.jsonl",
+                "line": index + 1,
+                "tool_name": row.get("tool_name"),
+                "transaction_id": transaction_id,
+                "status": row.get("status"),
+                "error": result.get("error"),
+            }
     return None
+
+
+def phoenix_span_ref(span: object | None, run_id: str) -> dict:
+    if span is None:
+        raise RuntimeError("Phoenix failure scenario span was not created.")
+    context = span.get_span_context()
+    trace_id = format(context.trace_id, "032x")
+    span_id = format(context.span_id, "016x")
+    if not trace_id or not span_id:
+        raise RuntimeError("Phoenix failure scenario span has no trace/span identity.")
+    return {
+        "artifact": "traces/phoenix_spans.jsonl",
+        "run_id": run_id,
+        "trace_id": trace_id,
+        "span_id": span_id,
+    }
 
 
 def run() -> list[dict]:
     rows: list[dict] = []
 
+    # Failure 1: deliberately fail the Gemini primary and verify Groq fallback.
     previous = os.environ.get("FORCE_GEMINI_FAILURE")
     os.environ["FORCE_GEMINI_FAILURE"] = "1"
+    run_id = "FAIL-FALLBACK-001"
+    trace_manager = configure_phoenix(
+        enabled=True,
+        endpoint=os.getenv("PHOENIX_ENDPOINT", "http://127.0.0.1:6006/v1/traces"),
+    )
+    failure_span = None
     try:
-        gateway = SemanticGateway("real")
-        try:
-            gateway.classify("I did not make this transaction", run_id="FAIL-FALLBACK-001")
-            rows.append({
-                "scenario": "gemini_primary_failure_fallback",
-                "status": "handled",
-                "run_id": "FAIL-FALLBACK-001",
-                "provider_attempts": gateway.last_attempts,
-                "provider_log_ref": provider_log_refs("FAIL-FALLBACK-001"),
-                "root_cause": "Gemini was deliberately fault-injected for resilience verification.",
-                "fix": "Classified provider failure activates the fallback provider and records provenance.",
-            })
-        except ProviderError as exc:
-            rows.append({
-                "scenario": "semantic_provider_exhaustion",
-                "status": "handled",
-                "run_id": "FAIL-FALLBACK-001",
-                "provider_attempts": exc.attempts,
-                "provider_log_ref": provider_log_refs("FAIL-FALLBACK-001"),
-                "root_cause": "Both semantic attempts failed or were fault-injected.",
-                "fix": "The workflow converts semantic exhaustion into NEEDS_INFO/human review rather than releasing a decision.",
-            })
+        with trace_manager.span(
+            "failure.gemini_primary_fallback",
+            run_id=run_id,
+            failure_scenario="gemini_primary_failure",
+            evidence_id=os.getenv("EVIDENCE_ID", "unknown"),
+        ) as span:
+            failure_span = span
+            gateway = SemanticGateway("real")
+            try:
+                gateway.classify(
+                    "I did not make this transaction T-1007",
+                    run_id=run_id,
+                )
+                rows.append(
+                    {
+                        "scenario": "gemini_primary_failure_fallback",
+                        "status": "handled",
+                        "run_id": run_id,
+                        "failure_type": "primary_provider_failure",
+                        "provider_attempts": gateway.telemetry_for(run_id).get("attempts", []),
+                        "phoenix_ref": phoenix_span_ref(span, run_id),
+                        "root_cause": "Gemini was deliberately fault-injected for resilience verification.",
+                        "fix": "The provider gateway activates Groq fallback and records the provider attempts without releasing an unsafe decision.",
+                    }
+                )
+            except ProviderError as exc:
+                rows.append(
+                    {
+                        "scenario": "semantic_provider_exhaustion",
+                        "status": "handled",
+                        "run_id": run_id,
+                        "failure_type": "provider_exhaustion",
+                        "provider_attempts": exc.attempts,
+                        "phoenix_ref": phoenix_span_ref(span, run_id),
+                        "root_cause": "Both semantic attempts failed or were fault-injected.",
+                        "fix": "The workflow converts semantic exhaustion into NEEDS_INFO instead of releasing a decision.",
+                    }
+                )
     finally:
         if previous is None:
             os.environ.pop("FORCE_GEMINI_FAILURE", None)
@@ -99,11 +117,6 @@ def run() -> list[dict]:
 
     from mcp_server import server
 
-    # Mint with the SAME secret the server verifies against (ACCESS_SECRET env,
-    # matching mcp_server/server.py's _ctx()). A mismatched secret would make
-    # every call below fail at signature verification (ACCESS_CONTEXT_INVALID)
-    # before ever reaching the customer-ownership/existence check we're trying
-    # to demonstrate, collapsing both scenarios into the same false result.
     token = mint_context(
         Principal(actor_id="analyst:A-001", role=Role.analyst, team="fraud-ops"),
         "CASE-FAIL-001",
@@ -111,54 +124,77 @@ def run() -> list[dict]:
         ["txn:read"],
         os.environ.get("ACCESS_SECRET", "dev-only-change-me"),
     )
+
     try:
         server.get_transaction(token, "T-2001")
     except Exception as exc:
-        rows.append({
-            "scenario": "cross_customer_transaction_access",
-            "status": "handled",
-            "error": str(exc),
-            "tool_log_ref": last_tool_log_ref(),
-            "root_cause": "Requested transaction belongs to another synthetic customer.",
-            "fix": "MCP data-plane checks signed case customer binding and returns TXN_NOT_FOUND semantics.",
-        })
+        rows.append(
+            {
+                "scenario": "cross_customer_transaction_access",
+                "status": "handled",
+                "error": str(exc),
+                "tool_log_ref": tool_log_ref("T-2001"),
+                "root_cause": "Requested transaction belongs to another synthetic customer.",
+                "fix": "The MCP data plane checks the signed case/customer binding and refuses cross-customer access.",
+            }
+        )
 
     try:
         server.get_transaction(token, "T-NOT-EXIST")
     except Exception as exc:
-        rows.append({
-            "scenario": "unknown_transaction",
-            "status": "handled",
-            "error": str(exc),
-            "tool_log_ref": last_tool_log_ref(),
-            "root_cause": "The requested synthetic transaction does not exist.",
-            "fix": "Tool failure is typed and cannot become fabricated transaction data.",
-        })
+        rows.append(
+            {
+                "scenario": "unknown_transaction",
+                "status": "handled",
+                "error": str(exc),
+                "tool_log_ref": tool_log_ref("T-NOT-EXIST"),
+                "root_cause": "The requested synthetic transaction does not exist.",
+                "fix": "The MCP tool returns typed TXN_NOT_FOUND semantics instead of fabricating transaction data.",
+            }
+        )
+
+    # Allow batched telemetry from the dedicated failure span to reach Phoenix before the
+    # evidence exporter queries it.
+    if trace_manager.provider is not None:
+        try:
+            trace_manager.provider.force_flush(timeout_millis=5000)
+        except Exception:
+            pass
+    time.sleep(1)
 
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(rows, indent=2, default=str), encoding="utf-8")
+    REPORT.write_text(json.dumps(rows, indent=2, default=str) + "\n", encoding="utf-8")
 
     lines = [
         "# Failure Analysis",
         "",
-        "This file is generated by `scripts/run_failure_scenarios.py`. Each failure is induced through an actual executable boundary and includes the corresponding provider-attempt or tool-log evidence.",
+        "Generated by `scripts/run_failure_scenarios.py`. Each entry below is produced by an executable fault injection and cites either a Phoenix span or a machine-generated tool-log record.",
     ]
-    for idx, row in enumerate(rows, 1):
-        entry = [
-            "",
-            f"## Failure {idx}: {row['scenario']}",
-            f"- Status: `{row.get('status')}`",
-            f"- Run ID: `{row.get('run_id', 'n/a')}`",
-        ]
-        if row.get("provider_log_ref"):
-            entry.append(f"- Provider-log reference: `{json.dumps(row['provider_log_ref'], default=str)}`")
-        if "tool_log_ref" in row:
-            entry.append(f"- Tool-log reference: `{json.dumps(row.get('tool_log_ref'), default=str)}`")
-        entry += [
-            f"- Root cause: {row.get('root_cause')}",
-            f"- Fix: {row.get('fix')}",
-        ]
-        lines += entry
+    for index, row in enumerate(rows, 1):
+        lines.extend(
+            [
+                "",
+                f"## Failure {index}: {row['scenario']}",
+                f"- Status: `{row.get('status')}`",
+                f"- Run ID: `{row.get('run_id', 'n/a')}`",
+            ]
+        )
+        if row.get("phoenix_ref"):
+            ref = row["phoenix_ref"]
+            lines.append(
+                f"- Phoenix reference: `traces/phoenix_spans.jsonl` · run_id=`{ref['run_id']}` · trace_id=`{ref['trace_id']}` · span_id=`{ref['span_id']}`"
+            )
+        if row.get("tool_log_ref"):
+            ref = row["tool_log_ref"]
+            lines.append(
+                f"- Tool-log reference: `logs/tool_calls.jsonl` line `{ref['line']}` · tool=`{ref['tool_name']}` · transaction=`{ref['transaction_id']}` · error=`{ref['error']}`"
+            )
+        lines.extend(
+            [
+                f"- Root cause: {row.get('root_cause')}",
+                f"- Fix: {row.get('fix')}",
+            ]
+        )
     (ROOT / "docs/failure-analysis.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(REPORT)
     return rows

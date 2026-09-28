@@ -4,7 +4,7 @@ from pathlib import Path
 from app.models import TrustLevel
 
 class TieredMemory:
-    """Working memory is per-run; semantic memory is durable and trust-filtered."""
+    """Working memory is per-run; verified memory is durable and trust-filtered."""
     def __init__(self, path="./runtime/memory.db"):
         self.path=path; Path(path).parent.mkdir(parents=True,exist_ok=True)
         self.customer_confirmed_level=TrustLevel.CUSTOMER_CONFIRMED
@@ -57,11 +57,12 @@ class LangMemBridge:
 
     NAMESPACE = ("dispute_memory", "{customer_id}")
 
-    def __init__(self):
+    def __init__(self, durable_memory: TieredMemory | None = None):
         self.available = False
         self._store = None
         self._manage_tool = None
         self._search_tool = None
+        self._durable_memory = durable_memory
         try:
             from langgraph.store.memory import InMemoryStore
             from langmem import create_manage_memory_tool, create_search_memory_tool
@@ -76,6 +77,24 @@ class LangMemBridge:
     def available_status(self) -> bool:
         return self.available
 
+
+    async def rehydrate_customer(self, customer_id: str) -> int:
+        """Rebuild LangMem's semantic overlay from durable SQLite facts.
+
+        LangMem's in-process store is deliberately non-authoritative. Rehydration
+        makes semantic recall cross-process: SQLite remains the source of truth,
+        while LangMem provides semantic lookup after the process starts.
+        """
+        if not self.available or self._durable_memory is None:
+            return 0
+        facts = self._durable_memory.recall(
+            customer_id, minimum=TrustLevel.CUSTOMER_CONFIRMED
+        )
+        count = 0
+        for fact in facts:
+            if await self.remember(customer_id, fact["fact_type"], fact["fact_value"]):
+                count += 1
+        return count
     async def remember(self, customer_id: str, fact_type: str, fact_value: object) -> bool:
         """Mirror a fact TieredMemory already accepted into LangMem's semantic index.
 
