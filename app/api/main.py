@@ -259,7 +259,7 @@ async def resolve(task_id: str, req: ResolveRequest):
     ):
         raise HTTPException(409, "REVIEW_CONFLICT")
     try:
-        await copilot.resume_review(task_id)
+        await copilot.resume_review(task_id, req.reviewer_id)
     except Exception:
         # The committed resolution is authoritative; reconcile can resume the workflow later.
         pass

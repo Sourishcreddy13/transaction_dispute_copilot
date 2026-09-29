@@ -26,6 +26,7 @@ from src.graph import CopilotGraph
 from src.memory.store import TieredMemory, LangMemBridge
 from src.mcp_client import BankingMCPClient
 from src.tools.rag_tool import AgenticPolicyRAG
+from src.execution.journey import ExecutionJourney
 from src.guardrails.validators import validate_customer_view
 from app.models import (
     AccountSnapshot,
@@ -210,6 +211,7 @@ class Copilot:
             return RunResponse.model_validate_json(existing["result_json"])
 
         run_id = "RUN-" + hashlib.sha256(f"{case_id}:{time.time_ns()}".encode()).hexdigest()[:12]
+        journey = ExecutionJourney(run_id)
 
         # Security boundary: raw text is scanned/masked BEFORE it enters graph state/checkpoints/traces.
         pii = await asyncio.to_thread(self.s.pii.scan, claim.dispute_message)
@@ -232,11 +234,21 @@ class Copilot:
             "audit_state": "PENDING",
             "run_id": run_id,
         }
+        journey.set_inputs(
+            {
+                "customer_id": row["customer_id"],
+                "transaction_id": initial.get("transaction_id"),
+                "claimed_amount": claim_hints.get("claimed_amount"),
+                "claimed_merchant": claim_hints.get("claimed_merchant"),
+                "claimed_date": claim_hints.get("claimed_date"),
+                "customer_statement_received": bool(claim.dispute_message.strip()),
+            }
+        )
 
         try:
             from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
             async with AsyncSqliteSaver.from_conn_string(self.settings.checkpoint_path) as cp:
-                graph = CopilotGraph(self.s, cp)
+                graph = CopilotGraph(self.s, cp, journey=journey)
                 with self.s.telemetry.span("copilot.run", case_id=case_id, run_id=run_id) as span:
                     result = await graph.ainvoke(initial, case_id)
                     if span is not None:
@@ -328,12 +340,13 @@ class Copilot:
                 "final_disposition": result.get("disposition"),
             },
             provenance=provenance,
+            execution_journey=journey.to_dict(),
         )
         validate_customer_view(response.customer_view)
         self.db.finish_operation(idem, response.model_dump(mode="json"))
         return response
 
-    async def resume_review(self, task_id: str, reviewer_id: str):
+    async def resume_review(self, task_id: str, reviewer_id: str | None = None):
         row = self.db.get_review(task_id)
         if not row:
             raise LookupError("REVIEW_NOT_FOUND")
@@ -344,7 +357,8 @@ class Copilot:
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
         async with AsyncSqliteSaver.from_conn_string(self.settings.checkpoint_path) as cp:
-            graph = CopilotGraph(self.s, cp)
+            journey = ExecutionJourney(f"RESUME-{task_id}")
+            graph = CopilotGraph(self.s, cp, journey=journey)
             with self.s.telemetry.span("copilot.review_resume", case_id=case["case_id"], run_id=f"RESUME-{task_id}"):
                 return await graph.graph.ainvoke(
                     Command(resume={"task_id": task_id}),

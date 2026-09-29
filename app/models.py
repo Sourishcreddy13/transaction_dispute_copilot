@@ -339,3 +339,4 @@ class RunResponse(BaseModel):
     customer_view: str = ""
     analyst_view: dict[str, Any] = Field(default_factory=dict)
     provenance: DecisionProvenance | None = None
+    execution_journey: dict[str, Any] = Field(default_factory=dict)

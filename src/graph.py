@@ -18,6 +18,9 @@ from src.guardrails.validators import (
 )
 
 
+from src.execution.journey import ExecutionJourney, input_summary, output_summary
+
+
 class CopilotState(TypedDict, total=False):
     case_id: str
     actor_id: str
@@ -63,8 +66,9 @@ class CopilotState(TypedDict, total=False):
 class CopilotGraph:
     """Authoritative LangGraph execution path for dispute triage."""
 
-    def __init__(self, services, checkpointer=None):
+    def __init__(self, services, checkpointer=None, journey: ExecutionJourney | None = None):
         self.s = services
+        self.journey = journey
         self.checkpointer = checkpointer
         self.context: ContextEngineer = services.context
 
@@ -83,7 +87,11 @@ class CopilotGraph:
             ("finalize", self.finalize),
         ]
         for name, fn in nodes:
-            self.builder.add_node(name, fn)
+            if name == "human_review":
+                wrapped = fn
+            else:
+                wrapped = self._wrap_node(name, fn)
+            self.builder.add_node(name, wrapped)
 
         self.builder.add_edge(START, "case_authorize")
         self.builder.add_edge("case_authorize", "ingress")
@@ -115,6 +123,26 @@ class CopilotGraph:
             self.builder.add_edge(node, "supervisor")
         self.builder.add_edge("finalize", END)
         self.graph = self.builder.compile(checkpointer=checkpointer)
+
+    def _wrap_node(self, node_id: str, fn):
+        async def wrapped(state: CopilotState):
+            if self.journey:
+                self.journey.start(node_id, input_summary(node_id, state))
+            try:
+                result = await fn(state)
+                if self.journey:
+                    if isinstance(result, dict) and result.get("errors"):
+                        message = "; ".join(str(error) for error in result["errors"])
+                        self.journey.fail(node_id, RuntimeError(message))
+                    else:
+                        self.journey.complete(node_id, output_summary(node_id, result or {}))
+                return result
+            except Exception as exc:
+                if self.journey:
+                    self.journey.fail(node_id, exc)
+                raise
+
+        return wrapped
 
     async def case_authorize(self, state: CopilotState):
         with self.s.telemetry.span("agent.case_authorize", case_id=state["case_id"], run_id=state["run_id"]):
@@ -433,7 +461,21 @@ class CopilotGraph:
 
     async def human_review(self, state: CopilotState):
         # No side effects before interrupt: resume may re-execute this node.
-        payload = interrupt({"task_id": state["review_task_id"], "case_id": state["case_id"]})
+        if self.journey:
+            self.journey.start("human_review", input_summary("human_review", state))
+        try:
+            payload = interrupt({"task_id": state["review_task_id"], "case_id": state["case_id"]})
+        except Exception as exc:
+            # LangGraph represents interrupt/pause control flow with a graph interrupt exception.
+            if exc.__class__.__name__ == "GraphInterrupt":
+                if self.journey:
+                    self.journey.pause("human_review", "Workflow paused awaiting authorized reviewer")
+                raise
+            if self.journey:
+                self.journey.fail("human_review", exc)
+            raise
+        if self.journey:
+            self.journey.complete("human_review", "Reviewer response received")
         return {"review_resume": payload}
 
     async def disposition_commit(self, state: CopilotState):
