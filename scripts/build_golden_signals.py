@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import math
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +15,25 @@ from _phoenix_evidence import application_traces, is_llm_span, model, provider, 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "reports"
 REPORTS.mkdir(parents=True, exist_ok=True)
+
+
+def source_manifest_sha256() -> str:
+    digest = hashlib.sha256()
+    for base in (ROOT / "app", ROOT / "src", ROOT / "mcp_server", ROOT / "config"):
+        for path in sorted(p for p in base.rglob("*") if p.is_file() and "__pycache__" not in p.parts):
+            digest.update(str(path.relative_to(ROOT)).encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def source_revision() -> str:
+    value = os.getenv("GIT_COMMIT_SHA")
+    if value:
+        return value
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return "uncommitted-source-tree"
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -76,9 +98,9 @@ if not application:
     raise RuntimeError("No copilot.run application traces were found in Phoenix export.")
 
 application_spans = [span for trace in application.values() for span in trace["spans"]]
-all_llm_spans = [span for span in spans if is_llm_span(span)]
+all_llm_spans = [span for span in application_spans if is_llm_span(span)]
 if not all_llm_spans:
-    raise RuntimeError("Phoenix export contains no LLM spans with token/provider telemetry.")
+    raise RuntimeError("Phoenix export contains no application LLM spans with token/provider telemetry.")
 
 by_kind: dict[str, list[float]] = {"thinking": [], "acting": [], "tool": [], "end_to_end": []}
 for span in application_spans:
@@ -145,9 +167,11 @@ report = {
     "source_artifact": "traces/phoenix_spans.jsonl",
     "source_sha256": trace_sha,
     "generated_at": datetime.now(timezone.utc).isoformat(),
+    "source_revision": source_revision(),
+    "source_manifest_sha256": source_manifest_sha256(),
     "telemetry_scope": {
         "latency": "application traces containing copilot.run",
-        "tokens_and_cost": "all LLM spans in the evidence time window, including evaluation/DeepEval judge calls because Phoenix does not currently correlate those child LLM spans to copilot.run",
+        "tokens_and_cost": "LLM spans belonging to traces that contain a copilot.run root; evaluator/DeepEval traces are excluded",
         "provider_fallback": "machine-generated provider attempts from the fresh evidence run only",
     },
     "runs": len(application),

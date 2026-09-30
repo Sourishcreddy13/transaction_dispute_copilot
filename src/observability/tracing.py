@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
+
+from opentelemetry.trace import Status, StatusCode
+
+
+logger = logging.getLogger(__name__)
 
 
 class TraceManager:
@@ -23,6 +29,8 @@ class TraceManager:
         self.log_path = (Path(__file__).resolve().parents[2] / log_candidate) if not log_candidate.is_absolute() else log_candidate
         self.tracer = None
         self.provider = None
+        self.degraded_reason: str | None = None
+        self.langchain_instrumented = False
         self._setup()
 
     def _setup(self) -> None:
@@ -64,11 +72,13 @@ class TraceManager:
             self.tracer = self.provider.get_tracer("transaction-dispute-copilot")
             self._instrument_langchain()
             return
-        except Exception:
-            pass
+        except Exception as exc:
+            self.degraded_reason = type(exc).__name__
+            if os.getenv("REQUIRE_PHOENIX_EVIDENCE", "0") == "1":
+                raise RuntimeError("PHOENIX_INSTRUMENTATION_UNAVAILABLE") from exc
+            logger.warning("Phoenix instrumentation unavailable; using generic OTLP mode: %s", self.degraded_reason)
 
-        # Generic OTLP fallback keeps the application observable even when Phoenix's
-        # local server is not running. Evidence generation can require Phoenix explicitly.
+        # Generic OTLP fallback is an explicitly degraded application mode; strict evidence mode never accepts it.
         try:
             from opentelemetry import trace
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -83,7 +93,10 @@ class TraceManager:
             self.provider = provider
             self.tracer = trace.get_tracer("transaction-dispute-copilot")
             self._instrument_langchain()
-        except Exception:
+        except Exception as exc:
+            self.degraded_reason = self.degraded_reason or type(exc).__name__
+            if os.getenv("REQUIRE_PHOENIX_EVIDENCE", "0") == "1":
+                raise RuntimeError("PHOENIX_EXPORTER_UNAVAILABLE") from exc
             self.tracer = None
 
     def _instrument_langchain(self) -> None:
@@ -91,9 +104,13 @@ class TraceManager:
             from openinference.instrumentation.langchain import LangChainInstrumentor
 
             LangChainInstrumentor().instrument(tracer_provider=self.provider)
-        except Exception:
-            # The application remains functional; manual spans still work.
-            return
+            self.langchain_instrumented = True
+        except Exception as exc:
+            self.langchain_instrumented = False
+            self.degraded_reason = self.degraded_reason or type(exc).__name__
+            if os.getenv("REQUIRE_PHOENIX_EVIDENCE", "0") == "1":
+                raise RuntimeError("LANGCHAIN_TRACING_UNAVAILABLE") from exc
+            logger.warning("LangChain tracing unavailable; manual Phoenix spans remain active: %s", type(exc).__name__)
 
     @contextmanager
     def span(self, name: str, **attrs: Any) -> Iterator[Any]:
@@ -105,6 +122,14 @@ class TraceManager:
                     span.set_attribute(key, str(value))
                 try:
                     yield span
+                except Exception as exc:
+                    try:
+                        span.record_exception(exc)
+                        span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+                        span.set_attribute("error.type", type(exc).__name__)
+                    except Exception:
+                        logger.debug("Unable to annotate failed span %s", name, exc_info=True)
+                    raise
                 finally:
                     self._record_local_span(name, attrs, started, span)
         else:
@@ -145,7 +170,12 @@ class TraceManager:
 
     @property
     def phoenix_available(self) -> bool:
-        return self.provider is not None and self.tracer is not None
+        return (
+            self.provider is not None
+            and self.tracer is not None
+            and self.langchain_instrumented
+            and self.degraded_reason is None
+        )
 
 
 def configure_phoenix(

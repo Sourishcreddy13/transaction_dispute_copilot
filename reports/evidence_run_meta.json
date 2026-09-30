@@ -1,5 +1,8 @@
 {
-  "evidence_id": "EVIDENCE-377c0d4f1734",
-  "started_at_utc": "2026-09-28T10:46:55.781815+00:00",
-  "project": "transaction-dispute-copilot"
+  "evidence_id": "EVIDENCE-91d206edb6de",
+  "started_at_utc": "2026-09-30T14:17:50.404574+00:00",
+  "project": "transaction-dispute-copilot",
+  "source_root": ".",
+  "source_revision": "uncommitted-source-tree",
+  "generation_command": "python scripts/generate_evidence.py"
 }

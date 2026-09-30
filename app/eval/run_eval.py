@@ -40,7 +40,11 @@ def evaluate_cases(cop: Copilot, cases: list[dict], suite_name: str) -> list[dic
             "intent_pass": intent_ok,
             "pass": action_ok and review_ok and intent_ok,
             "provider_attempts": out.provenance.provider_attempts if out.provenance else [],
-            "policy_citation": out.recommendation.policy.citation if out.recommendation else None,
+            "policy_citation": (
+                str(Path(out.recommendation.policy.citation).resolve().relative_to(ROOT))
+                if out.recommendation and out.recommendation.policy.citation and Path(out.recommendation.policy.citation).exists()
+                else out.recommendation.policy.citation if out.recommendation else None
+            ),
             "customer_view": out.customer_view,
         })
     return results

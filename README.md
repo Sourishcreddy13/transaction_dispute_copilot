@@ -68,6 +68,18 @@ PII_MODE=regex
 OTEL_ENABLED=false
 ```
 
+## 3. API authentication
+
+The FastAPI surface requires a bearer token mapped to a server-side principal in `API_TOKENS_JSON`. Actor/reviewer IDs are never accepted from request bodies. For local development, place synthetic credentials in `.env`; do not commit the real values. The browser UI prompts for the bearer token and stores it only in `sessionStorage`.
+
+Example shape:
+
+```text
+API_TOKENS_JSON={"replace-with-random-token":{"actor_id":"analyst:A-001","role":"analyst","team":"fraud-ops"},"replace-with-random-reviewer-token":{"actor_id":"reviewer:R-001","role":"reviewer","team":"fraud-ops"}}
+```
+
+Generate random 32+ character values for every environment.
+
 ## 3. Run a real dispute
 
 Create `.env` from `.env.example` and provide the Gemini primary key plus the Groq fallback key.

@@ -148,12 +148,13 @@ class CopilotGraph:
         with self.s.telemetry.span("agent.case_authorize", case_id=state["case_id"], run_id=state["run_id"]):
             try:
                 principal = self.s.principal(state["actor_id"], state["role"])
-                self.s.authorize(principal, state["case_id"])
+                await asyncio.to_thread(self.s.authorize, principal, state["case_id"])
                 return {"authorized": True}
             except PermissionError as exc:
+                error_code = "CASE_NOT_FOUND" if str(exc) == "CASE_NOT_FOUND" else "CASE_ACCESS_DENIED"
                 return {
                     "authorized": False,
-                    "errors": [str(exc) or "AUTHZ_CASE_DENIED"],
+                    "errors": [error_code],
                     "case_state": CaseState.NEEDS_INFO.value,
                     "route": "finalize",
                 }
@@ -167,11 +168,10 @@ class CopilotGraph:
                 env = self.context.isolate(state["masked_text"])
                 self.context.write(env, {"case_id": state["case_id"], "role": state["role"]})
                 self.context.select(env, {"case_id": state["case_id"], "role": state["role"]})
-                self.context.compress(env)
+                self.context.compress(env, max_chars=7200, max_tokens=max(256, self.s.settings.semantic_max_context_tokens // 2))
 
-                turn_id = self.s.db.next_turn_id(state["case_id"])
                 previous = self.s.db.get_context(state["case_id"], limit=5)
-                self.s.db.save_context(state["case_id"], turn_id, env.masked_text, env.conversation_summary)
+                self.s.db.append_context(state["case_id"], env.masked_text, env.conversation_summary)
                 customer_id = self.s.db.get_case(state["case_id"])["customer_id"]
                 memory_hits = self.s.memory.recall(customer_id, minimum=self.s.memory.customer_confirmed_level)
                 historical_memory = [
@@ -197,7 +197,7 @@ class CopilotGraph:
                 }
             except Exception as exc:
                 self.s._transition(state["case_id"], CaseState.FAILED.value, "NONE")
-                return {"errors": ["INGRESS_FAILURE", str(exc)], "case_state": CaseState.FAILED.value, "route": "finalize"}
+                return {"errors": ["INGRESS_FAILURE"], "case_state": CaseState.FAILED.value, "route": "finalize"}
 
     async def supervisor(self, state: CopilotState):
         if state.get("injection_flag"):
@@ -277,7 +277,7 @@ class CopilotGraph:
             except Exception as exc:
                 code = "TOOL_TIMEOUT" if isinstance(exc, MCPToolTimeout) else "TOOL_DATA_UNAVAILABLE"
                 self._transition(state["case_id"], CaseState.NEEDS_INFO.value, "NONE")
-                return {"errors": [code, f"{type(exc).__name__}: {exc}"], "case_state": CaseState.NEEDS_INFO.value, "route": "finalize"}
+                return {"errors": [code], "case_state": CaseState.NEEDS_INFO.value, "route": "finalize"}
             candidates = self._resolve_transaction_candidates(state, txns)
             if len(candidates) != 1:
                 self._transition(state["case_id"], CaseState.NEEDS_INFO.value, "NONE")
@@ -297,7 +297,7 @@ class CopilotGraph:
             code = "TOOL_TIMEOUT" if isinstance(exc, MCPToolTimeout) else "TOOL_DATA_UNAVAILABLE"
             self._transition(state["case_id"], CaseState.NEEDS_INFO.value, "NONE")
             return {
-                "errors": [code, f"{type(exc).__name__}: {exc}"],
+                "errors": [code],
                 "case_state": CaseState.NEEDS_INFO.value,
                 "route": "finalize",
                 "transaction_candidates": [],
@@ -412,7 +412,7 @@ class CopilotGraph:
                 validate_recommendation(rec.model_dump())
             except Exception as exc:
                 self._transition(state["case_id"], CaseState.FAILED.value, "NONE")
-                self.s.db.audit(state["case_id"], "decision_failure", {"run_id": state["run_id"], "error": str(exc), "actor_id": state["actor_id"]})
+                self.s.db.audit(state["case_id"], "decision_failure", {"run_id": state["run_id"], "error_code": type(exc).__name__.upper() + "_FAILED", "actor_id": state["actor_id"]})
                 return {"errors": ["INVARIANT_VIOLATION"], "case_state": CaseState.FAILED.value, "route": "finalize"}
 
             sid = self.s.db.snapshot(
@@ -482,7 +482,7 @@ class CopilotGraph:
         task_id = state["review_task_id"]
         row = self.s.db.get_review(task_id)
         if not row or row["status"] != "RESOLVED":
-            return {"case_state": CaseState.PENDING_REVIEW.value}
+            return {"case_state": CaseState.FAILED.value, "errors": ["REVIEW_STATE_INVALID"], "route": "finalize"}
         disp = FinalDisposition.model_validate_json(row["resolution_json"])
         return {"disposition": disp.model_dump(mode="json"), "case_state": CaseState.RESOLVED.value}
 
@@ -523,7 +523,7 @@ class CopilotGraph:
                 {
                     "run_id": state["run_id"],
                     "actor_id": state["actor_id"],
-                    "error": str(exc),
+                    "error_code": f"{type(exc).__name__.upper()}_FAILED",
                 },
             )
             return {
@@ -553,6 +553,13 @@ class CopilotGraph:
             },
         )
         self.s.db.set_state(state["case_id"], case_state, review_state, "RELEASABLE")
+
+        if state.get("disposition") and case_state == CaseState.RESOLVED.value:
+            self.s.db.enqueue(
+                "case.finalized",
+                f"final-disposition:{state.get("review_task_id")}",
+                {"case_id": state["case_id"], "task_id": state.get("review_task_id"), "run_id": state["run_id"]},
+            )
 
         if state.get("recommendation") and case_state == CaseState.RESOLVED.value:
             rec = state["recommendation"]

@@ -1,11 +1,12 @@
 {
   "generated_by": "scripts/build_dashboard.py",
   "source": "traces/phoenix_spans.jsonl",
-  "source_sha256": "59296102eaaddf38ca54178c74c0c8c86ab6806e2c6cc6f868b5e08be271ab34",
+  "source_sha256": "a4eb71f4150588788082c311e86c7a14903445d6c786b0c0cae667651e34e54c",
   "application_trace_count": 9,
-  "exported_span_count": 541,
-  "dashboard_row_count": 541,
-  "token_cost_scope": "all Phoenix LLM spans in the evidence time window",
-  "latency_scope": "all Phoenix spans in the evidence time window",
+  "exported_span_count": 561,
+  "dashboard_row_count": 407,
+  "application_scoped_span_count": 407,
+  "token_cost_scope": "application copilot.run traces plus LLM spans temporally contained within those runs; DeepEval excluded",
+  "latency_scope": "the same application-scoped Phoenix spans",
   "pricing_source": "config/providers.yaml"
 }

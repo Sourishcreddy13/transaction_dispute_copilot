@@ -1,6 +1,6 @@
 {
   "generated_by": "scripts/capture_phoenix_dashboard.py",
-  "source": "http://127.0.0.1:6006/projects/UHJvamVjdDoy/spans?timeRangeKey=7d",
+  "source": "htt[LOCAL_PATH_REDACTED]",
   "phoenix_project": "transaction-dispute-copilot",
   "capture_type": "phoenix_ui_project_page"
 }

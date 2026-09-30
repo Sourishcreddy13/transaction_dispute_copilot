@@ -116,23 +116,39 @@ def span_index(spans: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
 
 
 def application_traces(spans: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Return Phoenix traces that actually contain an application copilot.run root.
+    """Return application runs and attach orphaned Phoenix LLM spans by time window.
 
-    DeepEval's own judge calls are intentionally excluded from application KPI/cost
-    calculations because they are evaluator workload, not customer workflow workload.
+    Some LangChain/OpenInference integrations emit child LLM spans under a separate
+    trace context when asynchronous execution crosses task boundaries. For those spans,
+    Phoenix still gives us authoritative start/end times and model/token metadata, so we
+    attach only LLM spans whose execution interval falls inside a single copilot.run root.
+    DeepEval judge calls are excluded because they execute outside application run windows.
     """
     grouped = span_index(spans)
     result: dict[str, dict[str, Any]] = {}
+    all_llm = [s for s in spans if is_llm_span(s)]
     for tid, group in grouped.items():
         roots = [s for s in group if is_root_copilot_span(s)]
         if not roots:
             continue
         root = sorted(roots, key=lambda s: parse_iso(s.get("start_time")) or datetime.min.replace(tzinfo=timezone.utc))[0]
+        root_start = parse_iso(root.get("start_time"))
+        root_end = parse_iso(root.get("end_time"))
+        attached = list(group)
+        if root_start and root_end:
+            for llm_span in all_llm:
+                # Do not duplicate LLM spans that are already in this root trace.
+                if trace_id(llm_span) == tid:
+                    continue
+                llm_start = parse_iso(llm_span.get("start_time"))
+                llm_end = parse_iso(llm_span.get("end_time"))
+                if llm_start and llm_end and root_start <= llm_start and llm_end <= root_end:
+                    attached.append(llm_span)
         result[tid] = {
             "trace_id": tid,
             "run_id": run_id(root),
             "case_id": case_id(root),
             "root": root,
-            "spans": group,
+            "spans": attached,
         }
     return result

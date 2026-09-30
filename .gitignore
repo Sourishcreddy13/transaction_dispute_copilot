@@ -10,9 +10,4 @@ runtime/
 *.pyc
 .DS_Store
 traces/*.parquet
-.venv/
-.venv-phoenix/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-__pycache__/
+*.zip

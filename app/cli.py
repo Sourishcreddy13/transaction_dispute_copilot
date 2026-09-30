@@ -54,14 +54,33 @@ def main() -> None:
         row = cop.db.get_review(args.task)
         if not row:
             raise SystemExit("REVIEW_NOT_FOUND")
-        if not cop.db.claim_review(args.task, args.actor, args.version - 1):
-            # The supplied version may already represent a claimed task.
-            pass
+
+        supplied_version = int(args.version)
+        current_version = int(row["version"])
+        if current_version != supplied_version:
+            raise SystemExit("REVIEW_VERSION_CONFLICT")
+
         if args.action:
+            # A PENDING task must first be atomically claimed at the supplied
+            # version. Claiming increments the task version, so resolution
+            # must use the refreshed version. Already-claimed tasks can be
+            # resolved directly only when the caller owns the claim.
+            if row["status"] == "PENDING":
+                if not cop.db.claim_review(args.task, args.actor, supplied_version):
+                    raise SystemExit("REVIEW_CONFLICT")
+                row = cop.db.get_review(args.task)
+                if not row or row["status"] != "CLAIMED" or row["claimed_by"] != args.actor:
+                    raise SystemExit("REVIEW_CONFLICT")
+                resolve_version = int(row["version"])
+            elif row["status"] == "CLAIMED" and row["claimed_by"] == args.actor:
+                resolve_version = current_version
+            else:
+                raise SystemExit("REVIEW_CONFLICT")
+
             resolved = cop.db.resolve_review(
                 args.task,
                 args.actor,
-                args.version,
+                resolve_version,
                 row["case_id"],
                 args.action,
                 args.reason_code,
@@ -74,13 +93,13 @@ def main() -> None:
             result = asyncio.run(cop.resume_review(args.task, args.actor))
             print(json.dumps(result, indent=2, default=str))
             return
-        print(json.dumps(dict(cop.db.get_review(args.task)), indent=2, default=str))
+        print(json.dumps(dict(row), indent=2, default=str))
         return
 
     if args.cmd == "outbox":
         from app.core.outbox import OutboxWorker
 
-        print(json.dumps({"delivered": OutboxWorker(cop.db).deliver_once()}, indent=2))
+        print(json.dumps({"delivered": OutboxWorker(cop.db, cop.settings.outbox_sink, max_attempts=cop.settings.outbox_max_attempts).deliver_once()}, indent=2))
         return
 
     if args.cmd == "evidence":

@@ -1,61 +1,83 @@
 from __future__ import annotations
-import hashlib, json, sqlite3, time
+
+import hashlib
+import json
+import sqlite3
+import time
 from pathlib import Path
 from app.models import TrustLevel
 
+
 class TieredMemory:
-    """Working memory is per-run; verified memory is durable and trust-filtered."""
+    """Verified durable memory plus bounded retrieval; model-inferred memory never drives decisions."""
+
+    MAX_FACTS_PER_CUSTOMER = 250
     def __init__(self, path="./runtime/memory.db"):
-        self.path=path; Path(path).parent.mkdir(parents=True,exist_ok=True)
-        self.customer_confirmed_level=TrustLevel.CUSTOMER_CONFIRMED
-        self.system_verified_level=TrustLevel.SYSTEM_VERIFIED
-        with sqlite3.connect(path) as c:
+        project_root = Path(__file__).resolve().parents[2]
+        path_obj = Path(path)
+        self.path = path_obj if path_obj.is_absolute() else project_root / path_obj
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.customer_confirmed_level = TrustLevel.CUSTOMER_CONFIRMED
+        self.system_verified_level = TrustLevel.SYSTEM_VERIFIED
+        with sqlite3.connect(self.path) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS memory_facts(
                 customer_id TEXT, fact_id TEXT PRIMARY KEY, fact_type TEXT, fact_value TEXT,
                 trust TEXT, source TEXT, created_at REAL, expires_at REAL, content_hash TEXT)""")
-    def write(self, customer_id:str, fact_type:str, fact_value:object, trust:TrustLevel, source:str, ttl_days:int=400):
+            c.execute("CREATE INDEX IF NOT EXISTS idx_memory_customer_expiry ON memory_facts(customer_id,expires_at,created_at)")
+
+    def write(self, customer_id: str, fact_type: str, fact_value: object, trust: TrustLevel, source: str, ttl_days: int = 400):
         if trust == TrustLevel.MODEL_INFERRED:
             return None
-        raw=json.dumps(fact_value,sort_keys=True,default=str)
-        fid=hashlib.sha256(f"{customer_id}|{fact_type}|{raw}".encode()).hexdigest()[:24]
-        now=time.time(); exp=now+ttl_days*86400
+        raw = json.dumps(fact_value, sort_keys=True, default=str)
+        fid = hashlib.sha256(f"{customer_id}|{fact_type}|{raw}".encode()).hexdigest()[:24]
+        now = time.time(); exp = now + min(max(int(ttl_days), 1), 730) * 86400
         with sqlite3.connect(self.path) as c:
-            c.execute("INSERT OR REPLACE INTO memory_facts VALUES(?,?,?,?,?,?,?,?,?)",
-                      (customer_id,fid,fact_type,raw,trust.value,source,now,exp,hashlib.sha256(raw.encode()).hexdigest()))
+            c.execute(
+                "INSERT OR REPLACE INTO memory_facts VALUES(?,?,?,?,?,?,?,?,?)",
+                (customer_id, fid, fact_type, raw, trust.value, source[:200], now, exp, hashlib.sha256(raw.encode()).hexdigest()),
+            )
+            c.execute("DELETE FROM memory_facts WHERE customer_id=? AND expires_at<=?", (customer_id, now))
+            c.execute(
+                "DELETE FROM memory_facts WHERE fact_id IN (SELECT fact_id FROM memory_facts WHERE customer_id=? ORDER BY created_at DESC LIMIT -1 OFFSET ?)",
+                (customer_id, self.MAX_FACTS_PER_CUSTOMER),
+            )
         return fid
-    def recall(self, customer_id:str, query:str="", minimum:TrustLevel=TrustLevel.CUSTOMER_CONFIRMED):
-        now=time.time(); q=query.lower()
+
+    def recall(self, customer_id: str, query: str = "", minimum: TrustLevel = TrustLevel.CUSTOMER_CONFIRMED, limit: int = 50):
+        now = time.time(); q = str(query).lower()[:1000]
+        limit = max(1, min(int(limit), 100))
+        rank = {TrustLevel.MODEL_INFERRED.value: 0, TrustLevel.CUSTOMER_CONFIRMED.value: 1, TrustLevel.REVIEWER_VERIFIED.value: 2, TrustLevel.SYSTEM_VERIFIED.value: 3}
+        clauses = ["customer_id=?", "expires_at>?", "trust IN (?,?,?)"]
+        params: list[object] = [customer_id, now, TrustLevel.CUSTOMER_CONFIRMED.value, TrustLevel.REVIEWER_VERIFIED.value, TrustLevel.SYSTEM_VERIFIED.value]
+        if minimum == TrustLevel.REVIEWER_VERIFIED:
+            clauses[-1] = "trust IN (?,?)"
+            params[-2:] = [TrustLevel.REVIEWER_VERIFIED.value, TrustLevel.SYSTEM_VERIFIED.value]
+        elif minimum == TrustLevel.SYSTEM_VERIFIED:
+            clauses[-1] = "trust=?"
+            params[-3:] = [TrustLevel.SYSTEM_VERIFIED.value]
+        if q:
+            clauses.append("lower(fact_type || ' ' || fact_value) LIKE ?")
+            params.append(f"%{q}%")
+        sql = f"SELECT fact_id,fact_type,fact_value,trust,source FROM memory_facts WHERE {' AND '.join(clauses)} ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
         with sqlite3.connect(self.path) as c:
-            rows=c.execute("SELECT * FROM memory_facts WHERE customer_id=? AND expires_at>? ORDER BY created_at DESC",
-                           (customer_id,now)).fetchall()
-        rank={TrustLevel.MODEL_INFERRED.value:0,TrustLevel.CUSTOMER_CONFIRMED.value:1,TrustLevel.REVIEWER_VERIFIED.value:2,TrustLevel.SYSTEM_VERIFIED.value:3}
-        out=[]
-        for r in rows:
-            if rank[r[4]] < rank[minimum.value]: continue
-            if q and q not in (r[2]+" "+r[3]).lower(): continue
-            out.append({"fact_id":r[1],"fact_type":r[2],"fact_value":json.loads(r[3]),"trust_level":r[4],"source":r[5]})
-        return out
+            rows = c.execute(sql, params).fetchall()
+        return [
+            {"fact_id": r[0], "fact_type": r[1], "fact_value": json.loads(r[2]), "trust_level": r[3], "source": r[4]}
+            for r in rows if rank.get(r[3], 0) >= rank[minimum.value]
+        ]
+
+    def cleanup_expired(self) -> int:
+        with sqlite3.connect(self.path) as c:
+            cur = c.execute("DELETE FROM memory_facts WHERE expires_at<=?", (time.time(),))
+            return cur.rowcount
+
 
 class LangMemBridge:
-    """LangMem integration boundary.
-
-    TieredMemory (above) remains the sole source of truth for decision-critical facts:
-    every write that feeds the recommendation/decision path goes through
-    ``TieredMemory.write`` first and ``TieredMemory.recall`` is what
-    ``CopilotGraph.ingress`` gates on for anything the agent is allowed to *act* on.
-
-    LangMem is layered on top, purely as an additional *semantic* recall surface:
-    every fact accepted by ``TieredMemory.write`` is mirrored here via ``remember()``
-    so it becomes searchable by meaning (not just substring), and ``semantic_recall()``
-    returns those hits tagged ``trust_level="model_inferred"`` so callers can never
-    mistake a semantic match for a verified fact. If the ``langmem``/``langgraph.store``
-    packages are unavailable, or their API drifts, every method below degrades to a
-    no-op rather than raising -- no part of the decision path depends on LangMem being
-    importable, matching the optional-dependency pattern used elsewhere in this repo
-    (e.g. ``src/observability/tracing.py``).
-    """
+    """Bounded semantic overlay; SQLite remains authoritative."""
 
     NAMESPACE = ("dispute_memory", "{customer_id}")
+    MAX_REHYDRATE_FACTS = 50
 
     def __init__(self, durable_memory: TieredMemory | None = None):
         self.available = False
@@ -63,10 +85,11 @@ class LangMemBridge:
         self._manage_tool = None
         self._search_tool = None
         self._durable_memory = durable_memory
+        self._rehydrated: set[str] = set()
+        self._max_customers = 500
         try:
             from langgraph.store.memory import InMemoryStore
             from langmem import create_manage_memory_tool, create_search_memory_tool
-
             self._store = InMemoryStore()
             self._manage_tool = create_manage_memory_tool(namespace=self.NAMESPACE, store=self._store)
             self._search_tool = create_search_memory_tool(namespace=self.NAMESPACE, store=self._store)
@@ -77,73 +100,41 @@ class LangMemBridge:
     def available_status(self) -> bool:
         return self.available
 
-
     async def rehydrate_customer(self, customer_id: str) -> int:
-        """Rebuild LangMem's semantic overlay from durable SQLite facts.
-
-        LangMem's in-process store is deliberately non-authoritative. Rehydration
-        makes semantic recall cross-process: SQLite remains the source of truth,
-        while LangMem provides semantic lookup after the process starts.
-        """
-        if not self.available or self._durable_memory is None:
+        if not self.available or self._durable_memory is None or customer_id in self._rehydrated:
             return 0
-        facts = self._durable_memory.recall(
-            customer_id, minimum=TrustLevel.CUSTOMER_CONFIRMED
-        )
+        facts = self._durable_memory.recall(customer_id, limit=self.MAX_REHYDRATE_FACTS, minimum=TrustLevel.CUSTOMER_CONFIRMED)
         count = 0
         for fact in facts:
             if await self.remember(customer_id, fact["fact_type"], fact["fact_value"]):
                 count += 1
+        self._rehydrated.add(customer_id)
+        if len(self._rehydrated) > self._max_customers:
+            self._rehydrated.pop()
         return count
-    async def remember(self, customer_id: str, fact_type: str, fact_value: object) -> bool:
-        """Mirror a fact TieredMemory already accepted into LangMem's semantic index.
 
-        Returns False (never raises) if LangMem is unavailable or the write fails --
-        callers must not treat this as authoritative persistence.
-        """
+    async def remember(self, customer_id: str, fact_type: str, fact_value: object) -> bool:
         if not self.available:
             return False
         try:
-            content = json.dumps({"fact_type": fact_type, "fact_value": fact_value}, sort_keys=True, default=str)
-            await self._manage_tool.ainvoke(
-                {"content": content, "action": "create"},
-                config={"configurable": {"customer_id": customer_id}},
-            )
+            content = json.dumps({"fact_type": fact_type, "fact_value": fact_value}, sort_keys=True, default=str)[:5000]
+            await self._manage_tool.ainvoke({"content": content, "action": "create"}, config={"configurable": {"customer_id": customer_id}})
             return True
         except Exception:
             return False
 
     async def semantic_recall(self, customer_id: str, query: str, limit: int = 5) -> list[dict]:
-        """Best-effort semantic search over this customer's mirrored facts.
-
-        Always returns items tagged trust_level="model_inferred" -- read-only context
-        for the LLM-facing agents, never a substitute for TieredMemory.recall() on the
-        decision path. Returns [] (never raises) when unavailable or on any tool error.
-        """
         if not self.available or not query:
             return []
+        limit = max(1, min(int(limit), 10))
         try:
-            result = await self._search_tool.ainvoke(
-                {"query": query, "limit": limit},
-                config={"configurable": {"customer_id": customer_id}},
-            )
-            if isinstance(result, dict):
-                hits = result.get("memories") or result.get("results") or []
-            elif isinstance(result, list):
-                hits = result
-            else:
-                hits = []
+            await self.rehydrate_customer(customer_id)
+            result = await self._search_tool.ainvoke({"query": str(query)[:1000], "limit": limit}, config={"configurable": {"customer_id": customer_id}})
+            hits = result.get("memories") or result.get("results") or [] if isinstance(result, dict) else (result if isinstance(result, list) else [])
             out = []
             for h in hits[:limit]:
                 content = h.get("value", h.get("content", h)) if isinstance(h, dict) else h
-                out.append(
-                    {
-                        "fact_type": "semantic_recall",
-                        "fact_value": content,
-                        "trust_level": "model_inferred",
-                        "source": "langmem",
-                    }
-                )
+                out.append({"fact_type": "semantic_recall", "fact_value": content, "trust_level": "model_inferred", "source": "langmem"})
             return out
         except Exception:
             return []

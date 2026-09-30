@@ -6,7 +6,9 @@ export SEMANTIC_MODE="fake"
 export RAG_MODE="local"
 export PII_MODE="regex"
 export OTEL_ENABLED="false"
-export ACCESS_SECRET="${ACCESS_SECRET:-local-development-secret}"
+if [[ -z "${ACCESS_SECRET:-}" ]]; then
+  export ACCESS_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+fi
 uv run python scripts/seed_data.py
 uv run python scripts/smoke_mcp.py
 uv run python scripts/test_memory_persistence.py

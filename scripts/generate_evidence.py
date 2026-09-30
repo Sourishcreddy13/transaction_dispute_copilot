@@ -37,10 +37,22 @@ GENERATED_REPORTS = (
 )
 
 
-def run(*args: str, python: str | Path = PYTHON, check: bool = True) -> subprocess.CompletedProcess:
+def run(*args: str, python: str | Path = PYTHON, check: bool = True, timeout: int = 600) -> subprocess.CompletedProcess:
     command = [str(python), *args]
     print("$", " ".join(command))
-    return subprocess.run(command, cwd=ROOT, check=check)
+    try:
+        return subprocess.run(command, cwd=ROOT, check=check, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Evidence command timed out after {timeout}s: {' '.join(command)}") from exc
+
+
+def wait_for_file(path: Path, *, timeout_seconds: int = 60) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if path.exists() and path.stat().st_size > 0:
+            return
+        time.sleep(0.25)
+    raise RuntimeError(f"Evidence artifact did not become available within {timeout_seconds}s: {path}")
 
 
 def clear_generated_artifacts() -> None:
@@ -60,7 +72,7 @@ def main() -> None:
     if not PHOENIX_VENV_PYTHON.exists():
         raise RuntimeError(
             "Phoenix evidence requires .venv-phoenix. Create it with:\n"
-            "  python3.12 -m venv .venv-phoenix && .venv-phoenix/bin/pip install arize-phoenix"
+            "  python3.13 -m venv .venv-phoenix && .venv-phoenix/bin/pip install arize-phoenix"
         )
 
     clear_generated_artifacts()
@@ -76,6 +88,9 @@ def main() -> None:
         "evidence_id": evidence_id,
         "started_at_utc": evidence_start.isoformat(),
         "project": os.getenv("PHOENIX_PROJECT_NAME", "transaction-dispute-copilot"),
+        "source_root": ".",
+        "source_revision": os.getenv("GIT_COMMIT_SHA", "uncommitted-source-tree"),
+        "generation_command": "python scripts/generate_evidence.py",
     }
     (ROOT / "reports" / "evidence_run_meta.json").write_text(
         json.dumps(run_meta, indent=2) + "\n", encoding="utf-8"
@@ -84,19 +99,22 @@ def main() -> None:
     print(f"Evidence run: {evidence_id}")
     print(f"Evidence start: {evidence_start.isoformat()}")
 
-    run("scripts/seed_data.py")
-    run("scripts/test_memory_persistence.py")
-    run("scripts/smoke_mcp.py")
-    run("-m", "app.eval.run_eval")
-    run("-m", "app.eval.deepeval_suite")
-    run("scripts/run_failure_scenarios.py")
+    run("scripts/seed_data.py", timeout=120)
+    run("scripts/test_memory_persistence.py", timeout=120)
+    run("scripts/smoke_mcp.py", timeout=180)
+    run("-m", "app.eval.run_eval", timeout=900)
+    run("-m", "app.eval.deepeval_suite", timeout=900)
+    run("scripts/run_failure_scenarios.py", timeout=600)
 
-    time.sleep(3)
-    run("scripts/export_traces.py", python=PHOENIX_VENV_PYTHON)
-    run("scripts/build_golden_signals.py")
-    run("scripts/build_dashboard.py")
-    run("scripts/capture_phoenix_dashboard.py")
-    run("scripts/validate_evidence.py", "--strict")
+    run("scripts/export_traces.py", python=PHOENIX_VENV_PYTHON, timeout=180)
+    wait_for_file(ROOT / "traces" / "phoenix_spans.jsonl", timeout_seconds=30)
+    run("scripts/build_golden_signals.py", timeout=120)
+    run("scripts/build_dashboard.py", timeout=120)
+    run("scripts/capture_phoenix_dashboard.py", timeout=180)
+    # Evidence is regenerated on arbitrary developer machines; normalize any
+    # accidental local absolute paths before the strict portability check.
+    run("scripts/normalize_evidence_paths.py", timeout=60)
+    run("scripts/validate_evidence.py", "--strict", timeout=180)
     print("Evidence generation completed.")
 
 

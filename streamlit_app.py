@@ -22,6 +22,9 @@ import asyncio
 import json
 from pathlib import Path
 
+import hmac
+import os
+
 import pandas as pd
 import streamlit as st
 
@@ -32,6 +35,21 @@ ROOT = Path(__file__).resolve().parent
 
 st.set_page_config(page_title="Dispute & Fraud-Triage Copilot", layout="wide")
 
+
+
+
+def require_streamlit_auth() -> tuple[str, Role]:
+    expected = os.getenv("STREAMLIT_ACCESS_TOKEN", "")
+    actor = os.getenv("STREAMLIT_ACTOR_ID", "analyst:A-001")
+    role = Role(os.getenv("STREAMLIT_ROLE", "analyst"))
+    if not expected or len(expected) < 20:
+        st.error("STREAMLIT_ACCESS_TOKEN must be configured with a non-trivial development credential.")
+        st.stop()
+    provided = st.text_input("Access token", type="password", key="streamlit-access-token")
+    if not provided or not hmac.compare_digest(provided, expected):
+        st.info("Authenticate to access the local operations UI.")
+        st.stop()
+    return actor, role
 
 # --------------------------------------------------------------------------
 # Shared helpers
@@ -76,6 +94,7 @@ def load_jsonl_tail(path: Path, n: int = 20) -> list[dict]:
     return out
 
 
+actor, streamlit_role = require_streamlit_auth()
 cop = get_copilot()
 
 tab_intake, tab_evidence, tab_review = st.tabs(
@@ -99,8 +118,11 @@ with tab_intake:
 
     with col_case:
         st.subheader("Case")
-        actor = st.selectbox("Acting as", ["analyst:A-001"], index=0)
-        customer_id = st.selectbox("Customer", ["C-1001", "C-1002", "C-1003"], index=0)
+        st.caption(f"Authenticated actor: `{actor}` ({streamlit_role.value})")
+        customer_options = [p["customer_id"] for p in cop.s.data.list_customers()]
+        if streamlit_role == Role.customer:
+            customer_options = [cop.s.principal(actor, streamlit_role).customer_scope]
+        customer_id = st.selectbox("Customer", customer_options, index=0)
 
         existing_cases = cop.db.cases_for_customer(customer_id)
         case_options = ["<open a new case>"] + [
@@ -378,7 +400,10 @@ with tab_review:
             with st.expander("Recommendation under review", expanded=True):
                 st.json(recommendation_payload)
 
-        reviewer = st.selectbox("Acting as", ["reviewer:R-001"], index=0)
+        reviewer = actor if streamlit_role == Role.reviewer else ""
+        if streamlit_role != Role.reviewer:
+            st.warning("The review queue requires a reviewer-authenticated Streamlit session.")
+            st.stop()
 
         col_claim, col_resolve = st.columns(2)
 

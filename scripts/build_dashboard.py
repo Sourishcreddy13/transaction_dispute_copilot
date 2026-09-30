@@ -45,12 +45,23 @@ pricing = {
     for name, cfg in provider_config.get("providers", {}).items()
 }
 
-# Phoenix currently exports the LangChain LLM child spans as separate traces in this
-# application. Therefore the dashboard deliberately uses the complete LLM-span set
-# returned for the evidence time window for token/cost accounting, while latency rows
-# retain every span. The metadata records this scope explicitly.
+# Build the dashboard from the exact same application-trace scope as the golden-signals
+# report. Some asynchronous LLM spans are exported under separate trace IDs;
+# application_traces() attaches only those LLM spans that execute inside a copilot.run
+# window, excluding later DeepEval judge activity.
+scoped_spans: list[dict] = []
+seen_span_ids: set[str] = set()
+for trace in application.values():
+    for span in trace["spans"]:
+        sid = span_id(span)
+        key = sid or f"{span.get('name')}|{span.get('start_time')}|{span.get('end_time')}"
+        if key in seen_span_ids:
+            continue
+        seen_span_ids.add(key)
+        scoped_spans.append(span)
+
 rows: list[dict] = []
-for span in spans:
+for span in scoped_spans:
     llm = is_llm_span(span)
     u = usage(span) if llm else {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
     p = provider(span) if llm else None
@@ -103,8 +114,9 @@ source_sha = hashlib.sha256(PHOENIX.read_bytes()).hexdigest()
             "application_trace_count": len(application),
             "exported_span_count": len(spans),
             "dashboard_row_count": len(rows),
-            "token_cost_scope": "all Phoenix LLM spans in the evidence time window",
-            "latency_scope": "all Phoenix spans in the evidence time window",
+            "application_scoped_span_count": len(scoped_spans),
+            "token_cost_scope": "application copilot.run traces plus LLM spans temporally contained within those runs; DeepEval excluded",
+            "latency_scope": "the same application-scoped Phoenix spans",
             "pricing_source": "config/providers.yaml",
         },
         indent=2,

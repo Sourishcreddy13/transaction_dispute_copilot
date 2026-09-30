@@ -51,6 +51,8 @@ class Services:
             classification_budget=settings.classification_budget,
             rag_rewrite_budget=settings.rag_rewrite_budget,
             provider_max_attempts=settings.provider_max_attempts,
+            max_workers=settings.semantic_max_workers,
+            max_context_tokens=settings.semantic_max_context_tokens,
         )
         self.fraud = FraudEngine()
         self.policy = PolicyEngine()
@@ -87,8 +89,9 @@ class Services:
             if row["customer_id"] not in portfolio:
                 raise PermissionError("CASE_DENIED")
         elif principal.role == Role.reviewer:
-            if not principal.actor_id.startswith("reviewer:"):
-                raise PermissionError("CASE_DENIED")
+            # Reviewer identity is already derived from the authenticated principal.
+            # Do not encode authorization semantics in a mutable client-provided ID format.
+            return row
         elif principal.role == Role.customer:
             if principal.customer_scope != row["customer_id"]:
                 raise PermissionError("CASE_DENIED")
@@ -122,11 +125,13 @@ class Services:
 
         tx = await self.mcp.call("get_transaction", {"access_context": tx_token, "transaction_id": tid})
         tx_ts = tx.get("timestamp") if isinstance(tx, dict) else None
-        hist = await self.mcp.call("get_recent_transactions", {"access_context": hist_token, "window_days": 90, "limit": 20, "as_of": tx_ts}, expect="list")
-        profile = await self.mcp.call("get_customer_profile", {"access_context": prof_token})
-        prior = await self.mcp.call("get_prior_disputes", {"access_context": hist_token, "limit": 10}, expect="list")
-        account = await self.mcp.call("get_account_summary", {"access_context": acct_token})
-        statements = await self.mcp.call("get_statements", {"access_context": acct_token, "limit": 12}, expect="list")
+        hist, profile, prior, account, statements = await asyncio.gather(
+            self.mcp.call("get_recent_transactions", {"access_context": hist_token, "window_days": 90, "limit": 20, "as_of": tx_ts}, expect="list"),
+            self.mcp.call("get_customer_profile", {"access_context": prof_token}),
+            self.mcp.call("get_prior_disputes", {"access_context": hist_token, "limit": 10}, expect="list"),
+            self.mcp.call("get_account_summary", {"access_context": acct_token}),
+            self.mcp.call("get_statements", {"access_context": acct_token, "limit": 12}, expect="list"),
+        )
 
         account_snapshot = AccountSnapshot(
             account=account["account"],
@@ -202,6 +207,8 @@ class Copilot:
     ):
         principal = self.s.principal(actor, role)
         row = self.s.authorize(principal, case_id)
+        if not text or len(text) > 5000:
+            raise ValueError("DISPUTE_TEXT_INVALID")
         claim = claim or DisputeClaim(dispute_message=text)
 
         idem = idempotency_key or ("run:" + hashlib.sha256(f"{case_id}|{actor}|{text}".encode()).hexdigest())
@@ -214,7 +221,20 @@ class Copilot:
         journey = ExecutionJourney(run_id)
 
         # Security boundary: raw text is scanned/masked BEFORE it enters graph state/checkpoints/traces.
-        pii = await asyncio.to_thread(self.s.pii.scan, claim.dispute_message)
+        try:
+            pii = await asyncio.to_thread(self.s.pii.scan, claim.dispute_message)
+        except Exception as exc:
+            error_code = self._safe_error_code(exc)
+            try:
+                self.db.set_state(case_id, CaseState.FAILED.value, review_state="NONE", audit_state="FAILED")
+            except Exception:
+                logger.exception("Failed to persist PII-gate case state case=%s", case_id)
+            try:
+                self.db.fail_operation(existing, error_code)
+            except Exception:
+                logger.exception("Failed to persist PII-gate operation failure case=%s", case_id)
+            self.db.audit(case_id, "pii_gate_failure", {"run_id": run_id, "actor_id": actor, "error_code": error_code})
+            raise
         claim_hints = {
             "transaction_id": claim.claimed_transaction_id,
             "claimed_amount": str(claim.claimed_amount) if claim.claimed_amount is not None else None,
@@ -250,7 +270,10 @@ class Copilot:
             async with AsyncSqliteSaver.from_conn_string(self.settings.checkpoint_path) as cp:
                 graph = CopilotGraph(self.s, cp, journey=journey)
                 with self.s.telemetry.span("copilot.run", case_id=case_id, run_id=run_id) as span:
-                    result = await graph.ainvoke(initial, case_id)
+                    result = await asyncio.wait_for(
+                        graph.ainvoke(initial, case_id),
+                        timeout=self.settings.max_run_seconds,
+                    )
                     if span is not None:
                         telemetry = self.s.semantic.telemetry_for(run_id)
                         for key, value in (telemetry.get("usage") or {}).items():
@@ -260,21 +283,33 @@ class Copilot:
                             )
                         span.set_attribute("llm.provider", telemetry.get("provider", "unknown"))
         except ImportError as exc:
+            error_code = self._safe_error_code(exc)
             self.db.audit(
                 case_id,
                 "checkpointer_unavailable",
-                {"run_id": run_id, "actor_id": actor, "error": str(exc)},
+                {"run_id": run_id, "actor_id": actor, "error_code": error_code},
             )
+            try:
+                self.db.set_state(case_id, CaseState.FAILED.value, review_state="NONE", audit_state="FAILED")
+            except Exception:
+                logger.exception("Failed to persist checkpointer failure state case=%s", case_id)
+            try:
+                self.db.fail_operation(existing, error_code)
+            finally:
+                self.s.semantic.release_run(run_id)
             raise RuntimeError(
                 "REQUIRED_CHECKPOINTER_UNAVAILABLE: install langgraph-checkpoint-sqlite"
             ) from exc
         except Exception as exc:
-            self.db.audit(case_id, "workflow_failure", {"run_id": run_id, "actor_id": actor, "error": str(exc)})
+            self.db.audit(case_id, "workflow_failure", {"run_id": run_id, "actor_id": actor, "error_code": self._safe_error_code(exc)})
             try:
                 self.db.set_state(case_id, CaseState.FAILED.value, "NONE", "FAILED")
             except Exception:
                 pass
-            self.db.fail_operation(idem, str(exc))
+            try:
+                self.db.fail_operation(existing, self._safe_error_code(exc))
+            finally:
+                self.s.semantic.release_run(run_id)
             raise
 
         rec = result.get("recommendation")
@@ -299,7 +334,7 @@ class Copilot:
             model_id=(successful_provider or {}).get("model", semantic_telemetry.get("model", self.settings.gemini_model)),
             provider_used=(successful_provider or {}).get("provider", semantic_telemetry.get("provider", "unknown")),
             policy_version=self.s.policy.cfg["version"],
-            config_hash=hashlib.sha256(Path("config/decision_policy.yaml").read_bytes()).hexdigest(),
+            config_hash=hashlib.sha256((Path(__file__).resolve().parents[1] / "config" / "decision_policy.yaml").read_bytes()).hexdigest(),
             inputs_snapshot_id=result.get("snapshot_id") or "not-created",
             prompt_hash=hashlib.sha256(pii.masked_text.encode()).hexdigest(),
             rag_index_hash=getattr(self.s.rag, "manifest_hash", None),
@@ -342,9 +377,16 @@ class Copilot:
             provenance=provenance,
             execution_journey=journey.to_dict(),
         )
-        validate_customer_view(response.customer_view)
-        self.db.finish_operation(idem, response.model_dump(mode="json"))
-        return response
+        try:
+            validate_customer_view(response.customer_view)
+            self.db.finish_operation(existing, response.model_dump(mode="json"))
+            return response
+        finally:
+            self.s.semantic.release_run(run_id)
+
+    @staticmethod
+    def _safe_error_code(exc: Exception) -> str:
+        return f"{type(exc).__name__.upper()}_FAILED"
 
     async def resume_review(self, task_id: str, reviewer_id: str | None = None):
         row = self.db.get_review(task_id)

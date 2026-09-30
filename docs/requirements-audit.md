@@ -1,6 +1,6 @@
 # Requirements Audit
 
-The corrected repository is aligned to the supplied assessment specification. This audit distinguishes implementation from generated evidence: the clean tree does not carry stale traces or screenshots from a previous run.
+The corrected repository is aligned to the supplied assessment specification. This audit distinguishes implementation from generated evidence. The repository contains a normalized reference evidence set; after installation, `make evidence` regenerates submission-grade traces/reports from the corrected source tree.
 
 ## Functional acceptance criteria
 
@@ -60,4 +60,4 @@ traces/phoenix_spans.jsonl
 README.md
 ```
 
-Generated evidence is intentionally excluded from the clean corrected tree so that no stale artifact can be mistaken for evidence produced by the corrected implementation.
+The committed reference evidence is not treated as proof of the patched runtime; submission-grade evidence is regenerated with `make evidence` so the trace, evaluation and dashboard are produced from the exact submitted source tree.

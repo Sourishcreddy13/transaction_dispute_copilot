@@ -60,6 +60,9 @@ def phoenix_span_ref(span: object | None, run_id: str) -> dict:
 
 def run() -> list[dict]:
     rows: list[dict] = []
+    secret = os.environ.get("ACCESS_SECRET", "")
+    if len(secret) < 32:
+        raise RuntimeError("ACCESS_SECRET must be at least 32 characters for failure evidence generation.")
 
     # Failure 1: deliberately fail the Gemini primary and verify Groq fallback.
     previous = os.environ.get("FORCE_GEMINI_FAILURE")
@@ -70,6 +73,7 @@ def run() -> list[dict]:
         endpoint=os.getenv("PHOENIX_ENDPOINT", "http://127.0.0.1:6006/v1/traces"),
     )
     failure_span = None
+    gateway = None
     try:
         with trace_manager.span(
             "failure.gemini_primary_fallback",
@@ -110,6 +114,11 @@ def run() -> list[dict]:
                     }
                 )
     finally:
+        if gateway is not None:
+            try:
+                gateway.close()
+            except Exception:
+                pass
         if previous is None:
             os.environ.pop("FORCE_GEMINI_FAILURE", None)
         else:
@@ -122,32 +131,53 @@ def run() -> list[dict]:
         "CASE-FAIL-001",
         "C-1001",
         ["txn:read"],
-        os.environ.get("ACCESS_SECRET", "dev-only-change-me"),
+        secret,
     )
 
+    # Failure 2: cross-customer access denial.  Use a dedicated Phoenix span rather
+    # than a mutable JSONL line number so the evidence citation remains resolvable
+    # after the tool log is regenerated or appended to.
+    run_id = "FAIL-MCP-IDOR-001"
     try:
-        server.get_transaction(token, "T-2001")
+        with trace_manager.span(
+            "failure.cross_customer_transaction_access",
+            run_id=run_id,
+            failure_scenario="cross_customer_transaction_access",
+            evidence_id=os.getenv("EVIDENCE_ID", "unknown"),
+        ) as span:
+            server.get_transaction(token, "T-2001")
     except Exception as exc:
         rows.append(
             {
                 "scenario": "cross_customer_transaction_access",
                 "status": "handled",
-                "error": str(exc),
-                "tool_log_ref": tool_log_ref("T-2001"),
+                "run_id": run_id,
+                "error": "TXN_NOT_FOUND",
+                "phoenix_ref": phoenix_span_ref(span, run_id),
                 "root_cause": "Requested transaction belongs to another synthetic customer.",
                 "fix": "The MCP data plane checks the signed case/customer binding and refuses cross-customer access.",
             }
         )
 
+    # Failure 3: unknown transaction.  Again, cite the generated Phoenix span
+    # rather than depending on a line number in an append-only tool log.
+    run_id = "FAIL-MCP-NOTFOUND-001"
     try:
-        server.get_transaction(token, "T-NOT-EXIST")
+        with trace_manager.span(
+            "failure.unknown_transaction",
+            run_id=run_id,
+            failure_scenario="unknown_transaction",
+            evidence_id=os.getenv("EVIDENCE_ID", "unknown"),
+        ) as span:
+            server.get_transaction(token, "T-NOT-EXIST")
     except Exception as exc:
         rows.append(
             {
                 "scenario": "unknown_transaction",
                 "status": "handled",
-                "error": str(exc),
-                "tool_log_ref": tool_log_ref("T-NOT-EXIST"),
+                "run_id": run_id,
+                "error": "TXN_NOT_FOUND",
+                "phoenix_ref": phoenix_span_ref(span, run_id),
                 "root_cause": "The requested synthetic transaction does not exist.",
                 "fix": "The MCP tool returns typed TXN_NOT_FOUND semantics instead of fabricating transaction data.",
             }

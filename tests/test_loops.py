@@ -85,3 +85,20 @@ def test_default_max_graph_steps_bounds_a_runaway_loop():
     limit = Settings().max_graph_steps
     with pytest.raises(GraphRecursionError):
         asyncio.run(graph.ainvoke({"steps": 0}, {"recursion_limit": limit}))
+
+def test_real_copilot_wrapper_passes_configured_recursion_limit(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from src.graph import CopilotGraph
+    calls={}
+    g=object.__new__(CopilotGraph)
+    g.s=SimpleNamespace(settings=SimpleNamespace(max_graph_steps=7))
+    g.graph=SimpleNamespace()
+    async def fake_ainvoke(initial, config):
+        calls["config"]=config
+        return {"ok":True}
+    g.graph.ainvoke=fake_ainvoke
+    result=asyncio.run(g.ainvoke({"case_id":"CASE-1"},"THREAD-1"))
+    assert result == {"ok":True}
+    assert calls["config"]["recursion_limit"] == 7
+    assert calls["config"]["configurable"]["thread_id"] == "THREAD-1"

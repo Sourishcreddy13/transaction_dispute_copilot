@@ -2,8 +2,8 @@
   "generated_by": "scripts/export_traces.py",
   "source": "Arize Phoenix",
   "project": "transaction-dispute-copilot",
-  "span_count": 541,
-  "evidence_start_utc": "2026-09-28T10:46:55.781815+00:00",
-  "evidence_end_utc": "2026-09-28T10:55:46.285167+00:00",
+  "span_count": 561,
+  "evidence_start_utc": "2026-09-30T14:17:50.404574+00:00",
+  "evidence_end_utc": "2026-09-30T14:21:58.395491+00:00",
   "filter": "Phoenix project spans at/after EVIDENCE_START_UTC"
 }

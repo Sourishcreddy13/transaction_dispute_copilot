@@ -108,12 +108,29 @@ def main() -> int:
     if ".env" not in gitignore:
         errors.append("GITIGNORE_MISSING:.env")
 
+    # Committed evidence must not contain developer-machine paths.
+    absolute_path_pattern = re.compile(r"(?:/Users/|/home/|/mnt/data/|(?:^|[\s\"\'(])[A-Za-z]:[\\/])")
+    for directory in (ROOT / "traces", ROOT / "reports", ROOT / "logs", ROOT / "docs"):
+        for path in directory.rglob("*"):
+            if not path.is_file() or path.name == ".gitkeep":
+                continue
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            if absolute_path_pattern.search(content):
+                errors.append(f"NON_PORTABLE_EVIDENCE_PATH:{path.relative_to(ROOT)}")
+
     # Basic evidence content checks.
     if args.strict:
         try:
             report = json.loads((ROOT / "reports/eval_report.json").read_text())
             if "deterministic_evaluation" not in report:
                 errors.append("EVAL_SCHEMA:missing deterministic_evaluation")
+            for result in report.get("deterministic_evaluation", {}).get("results", []):
+                citation = result.get("policy_citation")
+                if isinstance(citation, str) and citation.startswith(("/", "\\")):
+                    errors.append("EVAL_NON_PORTABLE_POLICY_CITATION")
         except Exception as exc:
             errors.append(f"EVAL_UNREADABLE:{exc}")
 
@@ -231,6 +248,11 @@ def main() -> int:
             _gold_tokens = _gold.get("tokens", {})
             if _gold_tokens.get("input") != _csv_input or _gold_tokens.get("output") != _csv_output:
                 errors.append("GOLDEN_DASHBOARD_TOKEN_MISMATCH")
+            _gold_latency = _gold.get("latency_ms", {})
+            if not _gold_latency.get("thinking", {}).get("p50"):
+                errors.append("GOLDEN_MISSING_THINKING_LATENCY")
+            if not _gold.get("source_manifest_sha256") or not _gold.get("source_revision"):
+                errors.append("GOLDEN_MISSING_SOURCE_PROVENANCE")
             _gold_cost = float(_gold.get("cost", {}).get("estimated_usd") or 0.0)
             if abs(_gold_cost - _csv_cost) > 1e-8:
                 errors.append("GOLDEN_DASHBOARD_COST_MISMATCH")

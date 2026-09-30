@@ -13,7 +13,14 @@ def _str(name: str, default: str) -> str:
 
 
 def _int(name: str, default: int) -> int:
-    return int(os.getenv(name, str(default)))
+    value = os.getenv(name, str(default))
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"INVALID_INTEGER_SETTING:{name}") from exc
+    if parsed <= 0:
+        raise ValueError(f"INVALID_POSITIVE_SETTING:{name}")
+    return parsed
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -24,7 +31,8 @@ def _bool(name: str, default: bool) -> bool:
 class Settings:
     db_path: str = field(default_factory=lambda: _str("DB_PATH", "./runtime/copilot.db"))
     checkpoint_path: str = field(default_factory=lambda: _str("CHECKPOINT_PATH", "./runtime/checkpoints.db"))
-    access_secret: str = field(default_factory=lambda: _str("ACCESS_SECRET", "dev-only-change-me"))
+    access_secret: str = field(default_factory=lambda: _str("ACCESS_SECRET", ""))
+    api_tokens_json: str = field(default_factory=lambda: _str("API_TOKENS_JSON", ""))
     semantic_mode: str = field(default_factory=lambda: _str("SEMANTIC_MODE", "real"))
     gemini_model: str = field(default_factory=lambda: _str("GEMINI_MODEL", "gemini-3.1-flash-lite"))
     groq_model: str = field(default_factory=lambda: _str("GROQ_MODEL", "openai/gpt-oss-120b"))
@@ -43,4 +51,11 @@ class Settings:
     context_compression_budget: int = field(default_factory=lambda: _int("CONTEXT_COMPRESSION_BUDGET", 1))
     rag_rewrite_budget: int = field(default_factory=lambda: _int("RAG_REWRITE_BUDGET", 1))
     provider_max_attempts: int = field(default_factory=lambda: _int("PROVIDER_MAX_ATTEMPTS", 2))
+    semantic_max_context_tokens: int = field(default_factory=lambda: _int("MAX_CONTEXT_TOKENS", 6000))
+    semantic_max_workers: int = field(default_factory=lambda: _int("SEMANTIC_MAX_WORKERS", 4))
+    outbox_max_attempts: int = field(default_factory=lambda: _int("OUTBOX_MAX_ATTEMPTS", 5))
     high_value_threshold: str = field(default_factory=lambda: _str("HIGH_VALUE_THRESHOLD", "50000.00"))
+
+    def validate_security(self) -> None:
+        if self.access_secret and len(self.access_secret) < 32:
+            raise RuntimeError("ACCESS_SECRET_TOO_WEAK")

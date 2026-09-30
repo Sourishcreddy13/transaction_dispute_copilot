@@ -1,67 +1,69 @@
 {
   "source": "Phoenix span export + machine-generated provider attempts + deterministic evaluation",
   "source_artifact": "traces/phoenix_spans.jsonl",
-  "source_sha256": "59296102eaaddf38ca54178c74c0c8c86ab6806e2c6cc6f868b5e08be271ab34",
-  "generated_at": "2026-09-28T10:55:47.277425+00:00",
+  "source_sha256": "a4eb71f4150588788082c311e86c7a14903445d6c786b0c0cae667651e34e54c",
+  "generated_at": "2026-09-30T14:21:59.447472+00:00",
+  "source_revision": "d17194b09a9caba5bf0b7e6d10eaf160145cfbf0",
+  "source_manifest_sha256": "2b3fc02694d63137c28611b65df2ec686b993a87c2a1c450c4e2adfc873fd042",
   "telemetry_scope": {
     "latency": "application traces containing copilot.run",
-    "tokens_and_cost": "all LLM spans in the evidence time window, including evaluation/DeepEval judge calls because Phoenix does not currently correlate those child LLM spans to copilot.run",
+    "tokens_and_cost": "LLM spans belonging to traces that contain a copilot.run root; evaluator/DeepEval traces are excluded",
     "provider_fallback": "machine-generated provider attempts from the fresh evidence run only"
   },
   "runs": 9,
-  "span_count": 383,
-  "llm_span_count": 29,
+  "span_count": 407,
+  "llm_span_count": 12,
   "latency_ms": {
     "overall": {
-      "p50": 13.0,
-      "p95": 5001.0,
-      "p99": 60084.0
+      "p50": 18.0,
+      "p95": 4149.0,
+      "p99": 16481.0
     },
     "thinking": {
-      "p50": null,
-      "p95": null,
-      "p99": null
+      "p50": 1363.0,
+      "p95": 16481.0,
+      "p99": 16481.0
     },
     "acting": {
-      "p50": 5.0,
-      "p95": 4210.0,
-      "p99": 60084.0
+      "p50": 7.0,
+      "p95": 3640.0,
+      "p99": 16546.0
     },
     "tool": {
-      "p50": 540.0,
-      "p95": 600.0,
-      "p99": 750.0
+      "p50": 1020.0,
+      "p95": 1207.0,
+      "p99": 1245.0
     },
     "end_to_end": {
-      "p50": 5518.0,
-      "p95": 64097.0,
-      "p99": 64097.0
+      "p50": 4932.0,
+      "p95": 18483.0,
+      "p99": 18483.0
     }
   },
   "tokens": {
-    "input": 11504,
-    "output": 5660,
-    "total": 17164,
+    "input": 2587,
+    "output": 1363,
+    "total": 3950,
     "by_provider": {
       "groq": {
-        "input": 9940,
-        "output": 5207,
-        "total": 15147,
-        "calls": 20
+        "input": 1411,
+        "output": 1025,
+        "total": 2436,
+        "calls": 3
       },
       "gemini": {
-        "input": 1564,
-        "output": 453,
-        "total": 2017,
+        "input": 1176,
+        "output": 338,
+        "total": 1514,
         "calls": 9
       }
     }
   },
   "cost": {
-    "estimated_usd": 0.0056857,
+    "estimated_usd": 0.00162765,
     "by_provider": {
-      "gemini": 0.0010705,
-      "groq": 0.0046152
+      "gemini": 0.000801,
+      "groq": 0.00082665
     },
     "pricing_basis": {
       "gemini": {
@@ -78,11 +80,11 @@
   "provider": {
     "primary": "gemini",
     "fallback": "groq",
-    "attempt_count": 12,
+    "attempt_count": 13,
     "run_count": 10,
-    "fallback_activations": 2,
-    "fallback_successes": 2,
-    "fallback_rate": 0.2
+    "fallback_activations": 3,
+    "fallback_successes": 3,
+    "fallback_rate": 0.3
   },
   "accuracy": {
     "action": 1.0,

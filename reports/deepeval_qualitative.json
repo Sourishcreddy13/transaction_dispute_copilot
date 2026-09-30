@@ -11,7 +11,7 @@
     },
     "Hallucination": {
       "score": 1.0,
-      "reason": "The score is 1.00 because the actual output aligns with the contexts and there are no contradictions."
+      "reason": "The score is 1.00 because the actual output aligns with all provided factual alignments and there are no contradictions, indicating perfect consistency with the contexts."
     }
   },
   {
@@ -22,7 +22,7 @@
     "id": "E3",
     "Answer Relevancy": {
       "score": 1.0,
-      "reason": "The score is 1.00 because the reply directly addressed the double\u2011charge issue with no irrelevant content, so it couldn\u2019t be any higher\u2014great job staying on point!"
+      "reason": "The score is 1.00 because the response directly addressed the double\u2011charge issue with no irrelevant content, earning a perfect relevancy rating."
     },
     "Faithfulness": {
       "score": 1.0,
@@ -30,7 +30,7 @@
     },
     "Hallucination": {
       "score": 1.0,
-      "reason": "The score is 1.00 because the actual output aligns with the contexts and there are no contradictions."
+      "reason": "The score is 1.00 because the actual output aligns with the merchant dispute policy and does not contradict any context, with no identified contradictions."
     }
   }
 ]

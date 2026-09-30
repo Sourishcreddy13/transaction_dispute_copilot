@@ -8,35 +8,24 @@
       {
         "provider": "gemini",
         "model": "gemini-3.1-flash-lite",
-        "status": "FAILED",
-        "error": "INJECTED_GEMINI_FAILURE",
-        "latency_ms": 0.0,
-        "attempt": 1,
-        "provider_attempt": 1,
-        "operation": "classify",
-        "run_id": "FAIL-FALLBACK-001"
-      },
-      {
-        "provider": "groq",
-        "model": "openai/gpt-oss-20b",
         "status": "SUCCESS",
-        "latency_ms": 1424.03,
-        "attempt": 2,
+        "latency_ms": 11419.93,
+        "attempt": 1,
         "provider_attempt": 1,
         "operation": "classify",
         "run_id": "FAIL-FALLBACK-001",
         "usage": {
-          "input_tokens": 439,
-          "output_tokens": 443,
-          "total_tokens": 882
+          "input_tokens": 155,
+          "output_tokens": 63,
+          "total_tokens": 218
         }
       }
     ],
     "phoenix_ref": {
       "artifact": "traces/phoenix_spans.jsonl",
       "run_id": "FAIL-FALLBACK-001",
-      "trace_id": "204883b41053d9faaf7e29df6b517cd7",
-      "span_id": "6c82da35920c6390"
+      "trace_id": "8fb350c47f1a2895418c0ed6fbfea07c",
+      "span_id": "f2a50c98eaf3c7e2"
     },
     "root_cause": "Gemini was deliberately fault-injected for resilience verification.",
     "fix": "The provider gateway activates Groq fallback and records the provider attempts without releasing an unsafe decision."
@@ -44,14 +33,13 @@
   {
     "scenario": "cross_customer_transaction_access",
     "status": "handled",
+    "run_id": "FAIL-MCP-IDOR-001",
     "error": "TXN_NOT_FOUND",
-    "tool_log_ref": {
-      "artifact": "logs/tool_calls.jsonl",
-      "line": 63,
-      "tool_name": "get_transaction",
-      "transaction_id": "T-2001",
-      "status": "ERROR",
-      "error": "TXN_NOT_FOUND"
+    "phoenix_ref": {
+      "artifact": "traces/phoenix_spans.jsonl",
+      "run_id": "FAIL-MCP-IDOR-001",
+      "trace_id": "781175e87c9e879a0d10185ed0eb43c8",
+      "span_id": "e0cdda4ece25d6a3"
     },
     "root_cause": "Requested transaction belongs to another synthetic customer.",
     "fix": "The MCP data plane checks the signed case/customer binding and refuses cross-customer access."
@@ -59,14 +47,13 @@
   {
     "scenario": "unknown_transaction",
     "status": "handled",
+    "run_id": "FAIL-MCP-NOTFOUND-001",
     "error": "TXN_NOT_FOUND",
-    "tool_log_ref": {
-      "artifact": "logs/tool_calls.jsonl",
-      "line": 64,
-      "tool_name": "get_transaction",
-      "transaction_id": "T-NOT-EXIST",
-      "status": "ERROR",
-      "error": "TXN_NOT_FOUND"
+    "phoenix_ref": {
+      "artifact": "traces/phoenix_spans.jsonl",
+      "run_id": "FAIL-MCP-NOTFOUND-001",
+      "trace_id": "c98127488f8701d4d100d949d613dc72",
+      "span_id": "b10ef9594bf381e5"
     },
     "root_cause": "The requested synthetic transaction does not exist.",
     "fix": "The MCP tool returns typed TXN_NOT_FOUND semantics instead of fabricating transaction data."

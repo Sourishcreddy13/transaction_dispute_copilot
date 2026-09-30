@@ -108,7 +108,7 @@ class ExecutionJourney:
             if event.node_id == node_id and event.completed_at is None:
                 event.status = "failed"
                 event.completed_at = perf_counter()
-                event.error = f"{type(error).__name__}: {error}"
+                event.error = f"{type(error).__name__.upper()}_FAILED"
                 return
 
     def _node_view(self, node_id: str) -> dict[str, Any]:

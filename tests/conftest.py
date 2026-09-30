@@ -66,6 +66,7 @@ def test_copilot(tmp_path,monkeypatch):
     # ACCESS_CONTEXT_INVALID -> TOOL_DATA_UNAVAILABLE -> NEEDS_INFO with no
     # recommendation, exactly the same class of secret-mismatch bug already
     # found and fixed in scripts/run_failure_scenarios.py.
-    monkeypatch.setenv('SEMANTIC_MODE','fake'); monkeypatch.setenv('RAG_MODE','local'); monkeypatch.setenv('PII_MODE','regex'); monkeypatch.setenv('OTEL_ENABLED','false'); monkeypatch.setenv('ACCESS_SECRET','test-secret')
-    s=Settings(db_path=str(tmp_path/'test.db'),semantic_mode='fake',rag_mode='local',pii_mode='regex',otel_enabled=False,access_secret='test-secret')
+    test_secret='test-secret-0123456789-abcdef-0123456789'
+    monkeypatch.setenv('SEMANTIC_MODE','fake'); monkeypatch.setenv('RAG_MODE','local'); monkeypatch.setenv('PII_MODE','regex'); monkeypatch.setenv('OTEL_ENABLED','false'); monkeypatch.setenv('ACCESS_SECRET',test_secret)
+    s=Settings(db_path=str(tmp_path/'test.db'),semantic_mode='fake',rag_mode='local',pii_mode='regex',otel_enabled=False,access_secret=test_secret)
     return Copilot(db=DB(s.db_path),settings=s)

@@ -1,3 +1,4 @@
+import pytest
 import inspect
 from mcp_server import server
 
@@ -22,9 +23,9 @@ def test_unknown_transaction_returns_non_enumerating_error(monkeypatch):
     # The token must be signed with whatever secret the MCP server will
     # actually verify against (ACCESS_SECRET, default "dev-only-change-me"),
     # not an arbitrary literal the test happens to pick.
-    monkeypatch.setenv("ACCESS_SECRET", "test-secret")
+    monkeypatch.setenv("ACCESS_SECRET", "test-secret-0123456789-abcdef-0123456789")
     principal = Principal(actor_id="analyst:A-001", role=Role.analyst)
-    token = mint_context(principal, "CASE-1", "C-1001", ["txn:read"], "test-secret")
+    token = mint_context(principal, "CASE-1", "C-1001", ["txn:read"], "test-secret-0123456789-abcdef-0123456789")
     try:
         server.get_transaction(token, "T-NOT-FOUND")
     except LookupError as exc:
@@ -49,3 +50,7 @@ def test_all_mcp_tools_have_access_context_contract():
         sig = inspect.signature(getattr(server, name))
         assert "access_context" in sig.parameters
 
+def test_unknown_mcp_result_content_fails_closed():
+    from src.mcp_client import parse_mcp_content
+    with pytest.raises(ValueError, match="MCP_RESPONSE_CONTRACT_INVALID"):
+        parse_mcp_content([{"type":"image","data":"abc"}])
